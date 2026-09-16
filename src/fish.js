@@ -1,594 +1,141 @@
 import * as THREE from "three";
-import { randomGenerator } from "./math.js";
+import { groundHeight, randomGenerator } from "./math.js";
+import {
+  applySkin,
+  createFishMaterials,
+  makeAnatomy,
+} from "./fish-anatomy.js";
 
-const COUNT = 24;
-const BOUNDS = {
-  minX: -6.45,
-  maxX: 6.45,
-  minY: 2.12,
-  maxY: 6.22,
-  minZ: 0.15,
-  maxZ: 3.05,
+export const COUNT = 24;
+// The whole water column the fish may use. The floor is the sand, tracked separately.
+export const BOUNDS = {
+  minX: -8.3,
+  maxX: 8.3,
+  minY: 0.7,
+  maxY: 8.4,
+  minZ: -4.7,
+  maxZ: 3.2,
 };
+// Where the school prefers to hold station: the lit open water in front of the wood.
+const OPEN = { minX: -6.4, maxX: 6.4, minY: 2.2, maxY: 6.4, minZ: 0.1, maxZ: 3.0 };
+const GROUND_CLEARANCE = 0.55;
+const MAX_EXPLORERS = 7;
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
 const TAU = Math.PI * 2;
 
-// X is the fish's forward axis. Cross-sections preserve the narrow forehead,
-// deeper abdomen and compressed caudal peduncle from every swimming angle.
-const PROFILE = [
-  [-0.293, 0.015, 0.01, 0.002],
-  [-0.248, 0.022, 0.014, 0.001],
-  [-0.19, 0.04, 0.021, -0.002],
-  [-0.108, 0.062, 0.032, -0.004],
-  [-0.012, 0.081, 0.043, -0.005],
-  [0.082, 0.084, 0.047, -0.002],
-  [0.16, 0.079, 0.049, 0.004],
-  [0.225, 0.065, 0.045, 0.007],
-  [0.276, 0.048, 0.038, 0.004],
-  [0.31, 0.033, 0.028, -0.003],
-  [0.335, 0.02, 0.022, -0.008],
-  [0.345, 0.014, 0.016, -0.01],
-  [0.35, 0.002, 0.004, -0.01],
-];
-const BODY_CONTOUR = new THREE.CatmullRomCurve3(
-  PROFILE.map(
-    (section) => new THREE.Vector3(section[0], section[1], section[2]),
-  ),
-);
-
-function bodySection(t) {
-  const sample = t * (PROFILE.length - 1);
-  const index = Math.min(Math.floor(sample), PROFILE.length - 2);
-  const fraction = sample - index;
-  const blend = fraction * fraction * (3 - 2 * fraction);
-  const section = BODY_CONTOUR.getPoint(t);
-  section.center = THREE.MathUtils.lerp(
-    PROFILE[index][3],
-    PROFILE[index + 1][3],
-    blend,
-  );
-  return section;
-}
-
-function bodySectionAtX(x) {
-  let low = 0,
-    high = 1;
-  for (let step = 0; step < 12; step++) {
-    const middle = (low + high) * 0.5;
-    if (BODY_CONTOUR.getPoint(middle).x < x) low = middle;
-    else high = middle;
-  }
-  return bodySection((low + high) * 0.5);
-}
-
-function gillPoint(x, y, side) {
-  const section = bodySectionAtX(x);
-  const sine = THREE.MathUtils.clamp(
-    (y - section.center) / (section.y * (y < section.center ? 0.94 : 1)),
-    -1,
-    1,
-  );
-  const cheek =
-    1 + 0.05 * Math.exp(-((x - 0.17) ** 2) / 0.0025) * Math.max(0, -sine);
-  const z = Math.pow(Math.sqrt(1 - sine * sine), 0.86) * section.z * cheek;
-  return new THREE.Vector3(x, y, side * (z + 0.0007));
-}
-
-function bodyGeometry() {
-  const positions = [],
-    uvs = [],
-    indices = [];
-  const around = 32;
-  const length = 64;
-  for (let row = 0; row <= length; row++) {
-    const t = row / length;
-    const section = bodySection(t);
-    const x = section.x;
-    const height = section.y;
-    const width = section.z;
-    const center = section.center;
-    for (let col = 0; col <= around; col++) {
-      const theta = (col / around) * TAU;
-      const s = Math.sin(theta);
-      const y = center + s * height * (s < 0 ? 0.94 : 1);
-      const c = Math.cos(theta);
-      const cheek =
-        1 + 0.05 * Math.exp(-((x - 0.17) ** 2) / 0.0025) * Math.max(0, -s);
-      positions.push(
-        x,
-        y,
-        Math.sign(c) * Math.pow(Math.abs(c), 0.86) * width * cheek,
-      );
-      uvs.push(t, col / around);
-      if (row < length && col < around) {
-        const i = row * (around + 1) + col;
-        indices.push(
-          i,
-          i + around + 1,
-          i + 1,
-          i + 1,
-          i + around + 1,
-          i + around + 2,
-        );
-      }
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(positions, 3),
-  );
-  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function geometryBuilder() {
-  const positions = [],
-    normals = [],
-    uvs = [],
-    parts = [],
-    progress = [],
-    indices = [];
-  return {
-    add(geometry, part, matrix, finProgress) {
-      if (matrix) geometry.applyMatrix4(matrix);
-      const position = geometry.getAttribute("position");
-      const normal = geometry.getAttribute("normal");
-      const uv = geometry.getAttribute("uv");
-      const offset = positions.length / 3;
-      for (let i = 0; i < position.count; i++) {
-        positions.push(position.getX(i), position.getY(i), position.getZ(i));
-        normals.push(normal.getX(i), normal.getY(i), normal.getZ(i));
-        uvs.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
-        parts.push(part);
-        progress.push(finProgress ? finProgress[i] : 0);
-      }
-      const index = geometry.getIndex();
-      for (let i = 0; i < (index ? index.count : position.count); i++) {
-        indices.push(offset + (index ? index.getX(i) : i));
-      }
-      geometry.dispose();
-    },
-    finish() {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(positions, 3),
-      );
-      geometry.setAttribute(
-        "normal",
-        new THREE.Float32BufferAttribute(normals, 3),
-      );
-      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-      geometry.setAttribute(
-        "aPart",
-        new THREE.Float32BufferAttribute(parts, 1),
-      );
-      geometry.setAttribute(
-        "aFinProgress",
-        new THREE.Float32BufferAttribute(progress, 1),
-      );
-      geometry.setIndex(indices);
-      return geometry;
-    },
-  };
-}
-
-function finSurface(root, rim, part, builder, rayBuilder) {
-  const positions = [],
-    uvs = [],
-    progress = [],
-    indices = [];
-  const radialSteps = 7;
-  const origin = new THREE.Vector3(...root);
-  const outline = new THREE.CatmullRomCurve3(
-    rim.map((point) => new THREE.Vector3(...point)),
-  );
-  const outlineSteps = (rim.length - 1) * 3;
-  const side = part === 5 ? -1 : 1;
-  function hingeAt(t) {
-    const hinge = origin.clone();
-    if (part === 1) {
-      hinge.y = THREE.MathUtils.lerp(0.013, -0.012, t);
-    } else if (part === 2 || part === 3) {
-      hinge.x = THREE.MathUtils.lerp(rim[0][0], rim[rim.length - 1][0], t);
-      const body = bodySectionAtX(hinge.x);
-      hinge.y = body.center + body.y * (part === 2 ? 0.995 : -0.935);
-    }
-    return hinge;
-  }
-  for (let ray = 0; ray <= outlineSteps; ray++) {
-    const along = ray / outlineSteps;
-    const edge = outline.getPoint(along);
-    const hinge = hingeAt(along);
-    edge.lerp(
-      hinge,
-      0.018 * (1 - Math.cos(along * (rim.length - 1) * Math.PI * 2)),
-    );
-    for (let step = 0; step <= radialSteps; step++) {
-      const t = step / radialSteps;
-      const p = hinge.clone().lerp(edge, t);
-      p.z += Math.sin(t * Math.PI) * 0.007 * side;
-      p.z += Math.sin(along * Math.PI) * t * 0.003 * side;
-      positions.push(p.x, p.y, p.z);
-      uvs.push(along, t);
-      progress.push(t);
-      if (ray < outlineSteps && step < radialSteps) {
-        const i = ray * (radialSteps + 1) + step;
-        indices.push(
-          i,
-          i + 1,
-          i + radialSteps + 1,
-          i + 1,
-          i + radialSteps + 2,
-          i + radialSteps + 1,
-        );
-      }
-    }
-    if (ray % 3 === 0 && ray > 0 && ray < outlineSteps) {
-      const midpoint = hinge.clone().lerp(edge, 0.55);
-      midpoint.z += 0.007 * side;
-      const curve = new THREE.QuadraticBezierCurve3(hinge, midpoint, edge);
-      const rayGeometry = new THREE.TubeGeometry(
-        curve,
-        7,
-        part === 1 ? 0.00058 : 0.0004,
-        3,
-        false,
-      );
-      const rayProgress = [];
-      const rayPosition = rayGeometry.getAttribute("position");
-      const distance = hinge.distanceTo(edge);
-      for (let i = 0; i < rayPosition.count; i++) {
-        rayProgress.push(
-          Math.min(
-            1,
-            new THREE.Vector3()
-              .fromBufferAttribute(rayPosition, i)
-              .distanceTo(hinge) / Math.max(distance, 0.001),
-          ),
-        );
-      }
-      rayBuilder.add(rayGeometry, part, null, rayProgress);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(positions, 3),
-  );
-  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  builder.add(geometry, part, null, progress);
-}
-
-function makeAnatomy() {
-  const opaque = geometryBuilder();
-  const fins = geometryBuilder();
-  opaque.add(bodyGeometry(), 0);
-  const matrix = new THREE.Matrix4();
-  const quaternion = new THREE.Quaternion();
-  const position = new THREE.Vector3();
-  const scale = new THREE.Vector3();
-  const eyeNormal = new THREE.Vector3();
-  const outOfEye = new THREE.Vector3(0, 0, 1);
-  for (const side of [-1, 1]) {
-    const eyeCenter = new THREE.Vector3(0.26, 0.028, side * 0.047);
-    eyeNormal.set(0.42, 0.06, side * 0.905).normalize();
-    quaternion.setFromUnitVectors(outOfEye, eyeNormal);
-    position.copy(eyeCenter);
-    scale.set(1.04, 1, 0.84);
-    matrix.compose(position, quaternion, scale);
-    opaque.add(new THREE.SphereGeometry(0.0132, 20, 14), 10, matrix);
-    position.copy(eyeCenter).addScaledVector(eyeNormal, 0.0102);
-    scale.set(1, 1, 0.24);
-    matrix.compose(position, quaternion, scale);
-    opaque.add(new THREE.SphereGeometry(0.0102, 20, 12), 7, matrix);
-    position.copy(eyeCenter).addScaledVector(eyeNormal, 0.0123);
-    scale.set(1, 1, 0.2);
-    matrix.compose(position, quaternion, scale);
-    opaque.add(new THREE.SphereGeometry(0.0064, 18, 12), 8, matrix);
-    const gill = new THREE.CatmullRomCurve3([
-      gillPoint(0.167, 0.069, side),
-      gillPoint(0.142, 0.039, side),
-      gillPoint(0.149, -0.005, side),
-      gillPoint(0.185, -0.045, side),
-    ]);
-    opaque.add(new THREE.TubeGeometry(gill, 16, 0.00105, 4, false), 9);
-    const mouth = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.333, -0.014, side * 0.02),
-      new THREE.Vector3(0.347, -0.011, side * 0.015),
-      new THREE.Vector3(0.353, -0.01, 0),
-    ]);
-    opaque.add(new THREE.TubeGeometry(mouth, 10, 0.0012, 4, false), 9);
-    const upperLip = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.334, -0.01, side * 0.02),
-      new THREE.Vector3(0.348, -0.007, side * 0.014),
-      new THREE.Vector3(0.353, -0.006, 0),
-    ]);
-    opaque.add(new THREE.TubeGeometry(upperLip, 10, 0.0016, 5, false), 11);
-  }
-  finSurface(
-    [-0.286, 0.001, 0],
-    [
-      [-0.31, 0.027, 0],
-      [-0.352, 0.062, 0.002],
-      [-0.41, 0.095, 0.003],
-      [-0.455, 0.106, 0.002],
-      [-0.453, 0.076, 0],
-      [-0.429, 0.038, 0],
-      [-0.403, 0.014, 0],
-      [-0.395, 0, 0],
-      [-0.405, -0.017, 0],
-      [-0.435, -0.054, 0],
-      [-0.452, -0.099, 0.002],
-      [-0.414, -0.091, 0.003],
-      [-0.351, -0.052, 0.002],
-      [-0.306, -0.021, 0],
-    ],
-    1,
-    fins,
-    opaque,
-  );
-  finSurface(
-    [-0.048, 0.076, 0],
-    [
-      [0.076, 0.085, 0],
-      [0.031, 0.118, 0.003],
-      [-0.018, 0.133, 0.004],
-      [-0.071, 0.113, 0.003],
-      [-0.119, 0.098, 0.002],
-      [-0.164, 0.054, 0],
-    ],
-    2,
-    fins,
-    opaque,
-  );
-  finSurface(
-    [-0.123, -0.048, 0],
-    [
-      [-0.03, -0.068, 0],
-      [-0.079, -0.106, 0.002],
-      [-0.139, -0.101, 0.003],
-      [-0.192, -0.085, 0.002],
-      [-0.237, -0.03, 0],
-    ],
-    3,
-    fins,
-    opaque,
-  );
-  for (const side of [-1, 1]) {
-    finSurface(
-      [0.147, -0.021, side * 0.043],
-      [
-        [0.129, -0.036, side * 0.062],
-        [0.093, -0.067, side * 0.092],
-        [0.044, -0.078, side * 0.106],
-        [-0.001, -0.059, side * 0.102],
-        [0.026, -0.03, side * 0.077],
-        [0.076, -0.017, side * 0.052],
-      ],
-      side > 0 ? 4 : 5,
-      fins,
-      opaque,
-    );
-    finSurface(
-      [0.013, -0.07, side * 0.016],
-      [
-        [0.023, -0.078, side * 0.022],
-        [-0.019, -0.121, side * 0.043],
-        [-0.065, -0.11, side * 0.05],
-        [-0.077, -0.075, side * 0.026],
-      ],
-      6,
-      fins,
-      opaque,
-    );
-  }
-  return { body: opaque.finish(), fins: fins.finish() };
-}
-
+// The body is a flexible beam behind a nearly rigid head. Its spine follows a planar
+// curve whose curvature is the sum of a turning bend, set by how sharply the fish is
+// turning for its speed, and a propulsive wave that travels toward the tail and grows
+// there. Positions are found by integrating the curve; cross-sections stay rigid and
+// rotate with it, so the tail fin swings with the body instead of sliding sideways.
 const SWIM_GLSL = /* glsl */ `
-  attribute vec4 aSwim;
+  // Part ids come from fish-anatomy.js: 4 and 5 are the pectorals, 1-3, 6 and 12 the other fins.
+  attribute vec4 aSwim; // x: wave phase, y: wave curvature, z: turning curvature, w: pectoral brake
   attribute float aPart;
   attribute float aFinProgress;
   varying vec3 vSkinPoint;
   varying vec2 vFishUV;
   varying float vFishPart;
-  float tailWeight(float x) {
-    return pow(clamp((0.20 - x) / 0.66, 0.0, 1.0), 1.8);
+  const float PIVOT = 0.12;
+  vec3 gSwimPosition;
+  float spineCurvature(float s) {
+    if (s < 0.0) return 0.25 * aSwim.z;
+    float along = clamp(s / 0.57, 0.0, 1.0);
+    return aSwim.z + aSwim.y * pow(along, 1.5) * sin(aSwim.x - s * 7.5);
   }
-  vec3 swimDeform(vec3 p) {
-    float w = tailWeight(p.x);
-    p.z += sin(aSwim.x - p.x * 8.5) * aSwim.y * w;
-    p.z += aSwim.z * 0.034 * w;
+  vec3 finMotion(vec3 p) {
     if (aPart > 3.5 && aPart < 5.5) {
       float side = aPart < 4.5 ? 1.0 : -1.0;
       float beat = sin(aSwim.x * 1.53 + side * 0.9);
       p.z += side * aFinProgress * (0.013 * beat + 0.018 * aSwim.w);
       p.x += aFinProgress * (0.008 * beat - 0.033 * aSwim.w);
       p.y += aFinProgress * 0.008 * cos(aSwim.x * 1.53 + side * 0.9);
-    } else if (aPart > 1.5 && aPart < 6.5) {
-      p.z += sin(aSwim.x - p.x * 10.0) * aFinProgress * 0.009;
+    } else if ((aPart > 1.5 && aPart < 6.5) || aPart > 11.5) {
+      p.z += sin(aSwim.x - p.x * 10.0) * aFinProgress * 0.006;
     }
     return p;
+  }
+  vec3 bendSpine(vec3 p, inout vec3 n) {
+    float s = PIVOT - p.x;
+    // The head swings a little against the tail so momentum balances.
+    float theta = -0.1 * aSwim.y * sin(aSwim.x + 0.6);
+    vec2 spine = vec2(PIVOT, 0.0);
+    float kappa = spineCurvature(s);
+    if (s < 0.0) {
+      float mid = theta + 0.5 * kappa * s;
+      spine += vec2(-cos(mid), sin(mid)) * s;
+      theta += kappa * s;
+    } else {
+      float ds = s / 6.0;
+      for (int i = 0; i < 6; i++) {
+        float k = spineCurvature((float(i) + 0.5) * ds);
+        float mid = theta + 0.5 * k * ds;
+        spine += vec2(-cos(mid), sin(mid)) * ds;
+        theta += k * ds;
+      }
+    }
+    float c = cos(theta), sn = sin(theta);
+    vec3 local = vec3(n.x / max(0.3, 1.0 - p.z * kappa), n.y, n.z);
+    n = normalize(vec3(local.x * c + local.z * sn, local.y, -local.x * sn + local.z * c));
+    return vec3(spine.x + p.z * sn, p.y, spine.y + p.z * c);
   }
 `;
 
 function applySwimming(material, withColor = true) {
   material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", `#include <common>\n${SWIM_GLSL}`)
-      .replace(
-        "#include <beginnormal_vertex>",
-        /* glsl */ `
-        vec3 objectNormal = vec3(normal);
-        float epsilon = 0.0006;
-        float slope = (swimDeform(position + vec3(epsilon, 0.0, 0.0)).z - swimDeform(position - vec3(epsilon, 0.0, 0.0)).z) / (2.0 * epsilon);
-        objectNormal.x -= objectNormal.z * slope;
-      `,
-      )
-      .replace(
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <common>",
+      `#include <common>\n${SWIM_GLSL}`,
+    );
+    if (withColor) {
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <beginnormal_vertex>",
+          /* glsl */ `
+          vec3 objectNormal = vec3(normal);
+          gSwimPosition = bendSpine(finMotion(position), objectNormal);
+        `,
+        )
+        .replace(
+          "#include <begin_vertex>",
+          /* glsl */ `
+          vec3 transformed = gSwimPosition;
+          vSkinPoint = position;
+          vFishUV = uv;
+          vFishPart = aPart;
+        `,
+        );
+      applySkin(shader);
+    } else {
+      shader.vertexShader = shader.vertexShader.replace(
         "#include <begin_vertex>",
         /* glsl */ `
-        vec3 transformed = swimDeform(position);
-        vSkinPoint = position;
-        vFishUV = uv;
-        vFishPart = aPart;
+        vec3 swimNormal = vec3(0.0, 1.0, 0.0);
+        vec3 transformed = bendSpine(finMotion(position), swimNormal);
       `,
       );
-    if (!withColor) return;
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        "#include <common>",
-        /* glsl */ `
-        #include <common>
-        varying vec3 vSkinPoint;
-        varying vec2 vFishUV;
-        varying float vFishPart;
-        float fishHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        vec2 fishScaleGrid(vec2 uv) {
-          vec2 grid = uv * vec2(42.0, 18.0);
-          grid.x += mod(floor(grid.y), 2.0) * 0.5;
-          return grid;
-        }
-        float fishDetailMask() {
-          vec2 grid = fishScaleGrid(vFishUV);
-          float detail = smoothstep(-0.26, -0.15, vSkinPoint.x) * (1.0 - smoothstep(0.13, 0.215, vSkinPoint.x));
-          return detail * (1.0 - smoothstep(0.45, 1.2, max(fwidth(grid.x), fwidth(grid.y))));
-        }
-        float fishScaleRelief() {
-          vec2 cell = fract(fishScaleGrid(vFishUV)) - 0.5;
-          float dome = 1.0 - smoothstep(0.18, 0.57, length(cell * vec2(0.84, 1.0)));
-          return dome * (0.45 + cell.x * 0.7) * fishDetailMask();
-        }
-      `,
-      )
-      .replace(
-        "#include <color_fragment>",
-        /* glsl */ `
-        #include <color_fragment>
-        if (vFishPart < 0.5) {
-          float y = vSkinPoint.y;
-          vec3 belly = vec3(0.46, 0.53, 0.48);
-          vec3 flank = vec3(0.27, 0.35, 0.35);
-          vec3 back = vec3(0.040, 0.105, 0.115);
-          vec3 skin = mix(belly, flank, smoothstep(-0.045, 0.026, y));
-          skin = mix(skin, back, smoothstep(0.035, 0.087, y));
-          float stripeY = y + 0.0018 * sin(vSkinPoint.x * 24.0);
-          float stripe = smoothstep(0.006, 0.019, stripeY) * (1.0 - smoothstep(0.032, 0.045, stripeY));
-          stripe *= smoothstep(-0.28, -0.15, vSkinPoint.x) * (1.0 - smoothstep(0.24, 0.30, vSkinPoint.x));
-          skin = mix(skin, vec3(0.010, 0.255, 0.47), stripe * 0.92);
-          float lateral = exp(-pow((y - 0.008) / 0.0036, 2.0));
-          skin *= 1.0 - lateral * 0.62 * (1.0 - smoothstep(0.17, 0.28, vSkinPoint.x));
-          vec2 grid = fishScaleGrid(vFishUV);
-          float scaleNoise = fishHash(floor(grid));
-          float rim = smoothstep(0.39, 0.50, length((fract(grid) - 0.5) * vec2(0.83, 1.0)));
-          float scaleMask = fishDetailMask();
-          skin *= 1.0 + (scaleNoise - 0.5) * 0.20 * scaleMask - rim * 0.075 * scaleMask;
-          float tailBlush = (1.0 - smoothstep(-0.27, -0.19, vSkinPoint.x)) * (1.0 - smoothstep(-0.005, 0.030, y));
-          skin = mix(skin, vec3(0.70, 0.075, 0.016), tailBlush * 0.8);
-          vec3 cheek = mix(vec3(0.36, 0.41, 0.34), vec3(0.19, 0.29, 0.27), smoothstep(-0.025, 0.048, y));
-          float head = smoothstep(0.165, 0.265, vSkinPoint.x);
-          skin = mix(skin, cheek, head * 0.80);
-          float gillPlate = exp(-pow((vSkinPoint.x - 0.176) / 0.037, 2.0) - pow((y + 0.008) / 0.042, 2.0));
-          skin = mix(skin, vec3(0.38, 0.45, 0.37), gillPlate * 0.36);
-          diffuseColor.rgb = skin;
-        } else if (vFishPart < 6.5) {
-          float caudal = 1.0 - step(1.5, vFishPart);
-          float anal = step(2.5, vFishPart) * (1.0 - step(3.5, vFishPart));
-          vec3 membrane = vec3(0.16, 0.29, 0.26);
-          float warm = caudal * (0.30 + 0.42 * smoothstep(0.14, 0.7, vFishUV.y)) + anal * 0.34;
-          diffuseColor.rgb = mix(membrane, vec3(0.84, 0.10, 0.022), warm);
-          float edge = 1.0 - smoothstep(0.86, 1.0, vFishUV.y) * 0.75;
-          diffuseColor.a *= mix(0.24, 0.76, caudal) * edge;
-        } else if (vFishPart < 7.5) {
-          diffuseColor.rgb = vec3(0.39, 0.36, 0.16);
-        } else if (vFishPart < 8.5) {
-          diffuseColor.rgb = vec3(0.006, 0.009, 0.008);
-        } else if (vFishPart < 9.5) {
-          diffuseColor.rgb = vec3(0.09, 0.17, 0.155);
-        } else if (vFishPart < 10.5) {
-          diffuseColor.rgb = vec3(0.055, 0.090, 0.075);
-        } else {
-          diffuseColor.rgb = vec3(0.34, 0.39, 0.32);
-        }
-      `,
-      )
-      .replace(
-        "#include <roughnessmap_fragment>",
-        /* glsl */ `
-        #include <roughnessmap_fragment>
-        if (vFishPart < 0.5) {
-          float scaleRoughness = 0.32 + fishHash(floor(fishScaleGrid(vFishUV))) * 0.18;
-          roughnessFactor = mix(roughnessFactor, scaleRoughness, fishDetailMask());
-        } else if (vFishPart > 6.5 && vFishPart < 8.5) {
-          roughnessFactor = 0.19;
-        }
-      `,
-      )
-      .replace(
-        "#include <normal_fragment_maps>",
-        /* glsl */ `
-        #include <normal_fragment_maps>
-        if (vFishPart < 0.5) {
-          float relief = fishScaleRelief() * 0.00070;
-          vec3 dx = dFdx(-vViewPosition), dy = dFdy(-vViewPosition);
-          vec3 rx = cross(dy, normal), ry = cross(normal, dx);
-          float determinant = dot(dx, rx);
-          vec3 gradient = sign(determinant) * (dFdx(relief) * rx + dFdy(relief) * ry);
-          normal = normalize(abs(determinant) * normal - gradient);
-        }
-      `,
-      )
-      .replace(
-        "#include <clearcoat_normal_fragment_maps>",
-        /* glsl */ `
-        #include <clearcoat_normal_fragment_maps>
-        #ifdef USE_CLEARCOAT
-          clearcoatNormal = normal;
-        #endif
-      `,
-      )
-      .replace(
-        "#include <lights_physical_fragment>",
-        /* glsl */ `
-        #include <lights_physical_fragment>
-        #ifdef USE_IRIDESCENCE
-          material.iridescence *= vFishPart < 0.5 ? 0.25 + fishDetailMask() * 0.75 : 0.0;
-          material.iridescenceThickness = 140.0 + fishHash(floor(fishScaleGrid(vFishUV))) * 100.0;
-        #endif
-      `,
-      );
+    }
   };
   material.customProgramCacheKey = () =>
-    `aquarium-fish-${withColor ? "skin" : "depth"}-2`;
+    `aquarium-fish-${withColor ? "skin" : "depth"}-3`;
 }
 
-function clampToTank(position, margin = 0) {
-  position.x = THREE.MathUtils.clamp(
-    position.x,
-    BOUNDS.minX + margin,
-    BOUNDS.maxX - margin,
-  );
-  position.y = THREE.MathUtils.clamp(
+function clampToBox(position, box, margin = 0) {
+  position.x = THREE.MathUtils.clamp(position.x, box.minX + margin, box.maxX - margin);
+  position.y = THREE.MathUtils.clamp(position.y, box.minY + margin, box.maxY - margin);
+  position.z = THREE.MathUtils.clamp(position.z, box.minZ + margin, box.maxZ - margin);
+  position.y = Math.max(
     position.y,
-    BOUNDS.minY + margin,
-    BOUNDS.maxY - margin,
-  );
-  position.z = THREE.MathUtils.clamp(
-    position.z,
-    BOUNDS.minZ + margin,
-    BOUNDS.maxZ - margin,
+    groundHeight(position.x, position.z) + GROUND_CLEARANCE + margin,
   );
   return position;
 }
 
-export function createFishSchool(scene, { obstacles = [] } = {}) {
+export function createFishSchool(
+  scene,
+  { obstacles = [], landmarks = [], thickets = [] } = {},
+) {
   const random = randomGenerator(583137);
   const range = (min, max) => min + random() * (max - min);
   const geometry = makeAnatomy();
@@ -599,25 +146,7 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
   swim.setUsage(THREE.DynamicDrawUsage);
   geometry.body.setAttribute("aSwim", swim);
   geometry.fins.setAttribute("aSwim", swim);
-  const skinMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff,
-    metalness: 0.23,
-    roughness: 0.43,
-    clearcoat: 0.08,
-    clearcoatRoughness: 0.34,
-    iridescence: 0.33,
-    iridescenceIOR: 1.33,
-    iridescenceThicknessRange: [150, 230],
-  });
-  const finMaterial = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    metalness: 0.15,
-    roughness: 0.48,
-    transparent: true,
-    opacity: 0.54,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
+  const { skin: skinMaterial, fins: finMaterial } = createFishMaterials();
   const depthMaterial = new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking,
   });
@@ -636,6 +165,20 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
   bodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   membranes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(bodies, membranes);
+
+  // Places a fish may go and look at: the hardscape landmarks and spots inside the grass.
+  const interests = landmarks.map((landmark) => ({ ...landmark }));
+  for (const bed of thickets)
+    for (let i = 0; i < 5; i++)
+      interests.push({
+        kind: "grass",
+        point: new THREE.Vector3(
+          range(bed.minX + 0.4, bed.maxX - 0.4),
+          range(1.6, Math.min(bed.maxY, 4.8)),
+          range(bed.minZ + 0.4, bed.maxZ - 0.3),
+        ),
+        obstacle: -1,
+      });
 
   let elapsed = 0;
   let startled = 0;
@@ -673,9 +216,13 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
       until: range(0.6, 8.4),
       cooldown: range(0, 2),
       effort: range(0.02, 0.07),
-      turn: 0,
+      bend: 0,
       finBrake: 0,
       seed: range(0, 100),
+      // Curiosity builds while a fish holds station and is spent on a visit somewhere.
+      curiosity: range(0, 0.7),
+      interest: null,
+      peck: 0,
     };
   });
   const delta = new THREE.Vector3();
@@ -695,13 +242,16 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
   const bankQuaternion = new THREE.Quaternion();
   const scale = new THREE.Vector3();
 
+  const explorers = () =>
+    fish.filter((f) => f.interest || f.mode === "inspect").length;
+
   function brake(individual) {
     individual.mode = "brake";
     individual.until = elapsed + range(0.65, 1.35);
     individual.anchor
       .copy(individual.position)
       .addScaledVector(individual.velocity, 0.22);
-    clampToTank(individual.anchor, 0.12);
+    clampToBox(individual.anchor, BOUNDS, 0.12);
   }
 
   function dart(individual, direction, frightened = false) {
@@ -710,18 +260,78 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
     individual.goal
       .copy(individual.position)
       .addScaledVector(direction, range(0.82, 1.38));
-    clampToTank(individual.goal, 0.2);
+    clampToBox(individual.goal, BOUNDS, 0.2);
     individual.cooldown = elapsed + range(6.5, 12.0);
   }
 
+  function relocate(individual, goal, duration) {
+    individual.mode = "relocate";
+    individual.until = elapsed + duration;
+    individual.goal.copy(goal);
+  }
+
+  // A relaxed move within the open water, biased toward company.
+  function wander(individual, neighborsCentroid) {
+    target
+      .copy(individual.position)
+      .add(
+        new THREE.Vector3(range(-2.6, 2.6), range(-0.65, 0.65), range(-0.85, 0.85)),
+      );
+    if (neighborsCentroid) target.lerp(neighborsCentroid, 0.25);
+    clampToBox(target, OPEN, 0.3);
+    relocate(individual, target, range(3.2, 6.5));
+    // Nearby fish at rest sometimes leave with it.
+    for (const other of fish) {
+      if (
+        other !== individual &&
+        other.mode === "hover" &&
+        !other.interest &&
+        other.position.distanceToSquared(individual.position) < 2.0 &&
+        random() < 0.18
+      ) {
+        delta.copy(target).add(
+          new THREE.Vector3(range(-0.8, 0.8), range(-0.3, 0.3), range(-0.5, 0.5)),
+        );
+        clampToBox(delta, OPEN, 0.3);
+        relocate(other, delta, range(3.2, 6.5));
+      }
+    }
+  }
+
+  function visit(individual) {
+    const interest = interests[Math.floor(random() * interests.length)];
+    individual.interest = interest;
+    individual.curiosity = 0;
+    relocate(individual, interest.point, 14);
+  }
+
   function decide(individual) {
-    if (individual.mode === "dart" || individual.mode === "relocate") {
+    const { mode } = individual;
+    if (mode === "dart") {
       brake(individual);
-    } else if (individual.mode === "brake") {
+    } else if (mode === "relocate") {
+      if (individual.interest) {
+        // Arrived: hang in front of it, nose toward it, and pick at it.
+        individual.mode = "inspect";
+        individual.until = elapsed + range(3, 8) * individual.character;
+        individual.anchor.copy(individual.position);
+        individual.peck = elapsed + range(0.4, 1.2);
+      } else brake(individual);
+    } else if (mode === "inspect") {
+      individual.interest = null;
+      wander(individual, null);
+    } else if (mode === "brake") {
       individual.mode = "hover";
-      individual.until = elapsed + range(3.1, 10.5) / individual.character;
+      individual.until = elapsed + range(4, 14) / individual.character;
       individual.anchor.copy(individual.position);
-    } else if (random() < 0.16) {
+    } else if (
+      interests.length &&
+      individual.curiosity > 0.55 &&
+      random() < individual.curiosity * 0.9 &&
+      explorers() < MAX_EXPLORERS
+    ) {
+      visit(individual);
+    } else if (random() < 0.3) {
       target.copy(individual.heading).multiplyScalar(range(0.1, 0.7));
       target
         .add(
@@ -730,18 +340,7 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
         .normalize();
       dart(individual, target);
     } else {
-      individual.mode = "relocate";
-      individual.until = elapsed + range(3.2, 6.5);
-      individual.goal
-        .copy(individual.position)
-        .add(
-          new THREE.Vector3(
-            range(-2.6, 2.6),
-            range(-0.65, 0.65),
-            range(-0.85, 0.85),
-          ),
-        );
-      clampToTank(individual.goal, 0.3);
+      wander(individual, null);
     }
   }
 
@@ -751,6 +350,11 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
     for (const individual of fish) {
       const { position, velocity } = individual;
       if (elapsed >= individual.until) decide(individual);
+      if (individual.mode !== "inspect")
+        individual.curiosity = Math.min(
+          1,
+          individual.curiosity + dt * 0.012 * individual.character,
+        );
       if (
         pointer &&
         pointer.strength > 0.09 &&
@@ -764,6 +368,7 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
         ) {
           delta.y *= 0.42;
           if (delta.lengthSq() < 0.01) delta.set(range(-1, 1), 0.1, -0.5);
+          individual.interest = null;
           dart(individual, delta.normalize(), true);
           startled++;
         }
@@ -790,7 +395,8 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
         }
       }
 
-      if (individual.mode === "hover") {
+      const { mode } = individual;
+      if (mode === "hover") {
         target.copy(individual.anchor);
         target.x += Math.sin(elapsed * 0.31 + individual.seed) * 0.045;
         target.y += Math.sin(elapsed * 0.69 + individual.seed * 1.4) * 0.028;
@@ -799,18 +405,34 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
           .subVectors(target, position)
           .multiplyScalar(0.65)
           .clampLength(0, 0.12);
-      } else if (individual.mode === "brake") {
+      } else if (mode === "brake") {
         desired
           .subVectors(individual.anchor, position)
           .multiplyScalar(0.24)
           .clampLength(0, 0.065);
+      } else if (mode === "inspect") {
+        // Hold just off the object, drifting slightly, with short pecks toward it.
+        target.copy(individual.interest.point);
+        delta.subVectors(target, position);
+        const standoff = individual.interest.kind === "grass" ? 0.1 : 0.32;
+        desired
+          .copy(delta)
+          .setLength(Math.max(0, delta.length() - standoff))
+          .multiplyScalar(0.5)
+          .clampLength(0, 0.1);
+        desired.x += Math.sin(elapsed * 0.9 + individual.seed) * 0.02;
+        desired.y += Math.sin(elapsed * 1.3 + individual.seed * 2.0) * 0.015;
+        if (elapsed > individual.peck) {
+          individual.peck = elapsed + range(0.6, 1.8);
+          velocity.addScaledVector(delta.normalize(), range(0.08, 0.16));
+        }
       } else {
         desired.subVectors(individual.goal, position);
         const remaining = desired.length();
-        if (individual.mode === "relocate" && remaining < 0.24)
-          brake(individual);
+        if (mode === "relocate" && remaining < (individual.interest ? 0.4 : 0.24))
+          decide(individual);
         desired.normalize();
-        if (neighbors && individual.mode === "relocate") {
+        if (neighbors && mode === "relocate" && !individual.interest) {
           centroid
             .multiplyScalar(1 / neighbors)
             .sub(position)
@@ -821,24 +443,33 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
             .addScaledVector(alignment, 0.15)
             .normalize();
         }
+        const cruise = individual.interest ? 0.2 : 0.23;
         const speed =
-          individual.mode === "dart"
+          mode === "dart"
             ? 1.26
-            : (0.23 + individual.character * 0.13) *
+            : (cruise + individual.character * 0.13) *
               Math.min(1, remaining / 0.55);
         desired.multiplyScalar(speed);
       }
 
       avoidance
         .copy(separation)
-        .multiplyScalar(individual.mode === "hover" ? 0.4 : 0.66);
-      for (const obstacle of obstacles) {
+        .multiplyScalar(mode === "hover" || mode === "inspect" ? 0.4 : 0.66);
+      obstacles.forEach((obstacle, index) => {
         delta.subVectors(position, obstacle.center);
         const distance = delta.length();
         const surface = distance - obstacle.radius - individual.scale * 0.23;
-        if (surface < 0.7 && distance > 0.001)
-          avoidance.addScaledVector(delta, ((0.7 - surface) * 1.25) / distance);
-      }
+        // A fish may come close to the thing it is looking at.
+        const buffer =
+          individual.interest && individual.interest.obstacle === index
+            ? 0.12
+            : 0.7;
+        if (surface < buffer && distance > 0.001)
+          avoidance.addScaledVector(
+            delta,
+            ((buffer - surface) * 1.25) / distance,
+          );
+      });
       const wallDistance = 0.6;
       for (const [axis, minimum, maximum] of [
         ["x", BOUNDS.minX, BOUNDS.maxX],
@@ -850,26 +481,33 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
         if (position[axis] > maximum - wallDistance)
           avoidance[axis] -= (position[axis] - maximum + wallDistance) * 0.45;
       }
+      const floor = groundHeight(position.x, position.z) + GROUND_CLEARANCE;
+      if (position.y < floor + wallDistance)
+        avoidance.y += (floor + wallDistance - position.y) * 0.6;
       desired.add(avoidance);
       previousHeading.copy(individual.heading);
       const wantedSpeed = desired.length();
-      if (
-        (individual.mode === "dart" ||
-          individual.mode === "relocate" ||
-          (individual.mode === "hover" && wantedSpeed > 0.14)) &&
-        wantedSpeed > 0.02
-      ) {
-        target.copy(desired).multiplyScalar(1 / wantedSpeed);
+      const steering =
+        mode === "dart" ||
+        mode === "relocate" ||
+        mode === "inspect" ||
+        (mode === "hover" && wantedSpeed > 0.14);
+      if (steering && (wantedSpeed > 0.02 || mode === "inspect")) {
+        if (mode === "inspect")
+          target.subVectors(individual.interest.point, position).normalize();
+        else target.copy(desired).multiplyScalar(1 / wantedSpeed);
         const yaw = Math.atan2(individual.heading.z, individual.heading.x);
         const wantedYaw = Math.atan2(target.z, target.x);
         const difference = Math.atan2(
           Math.sin(wantedYaw - yaw),
           Math.cos(wantedYaw - yaw),
         );
-        const turnLimit = dt * (individual.mode === "dart" ? 4.8 : 2.4);
+        const turnLimit =
+          dt * (mode === "dart" ? 4.8 : mode === "inspect" ? 1.4 : 2.4);
         const nextYaw =
           yaw + THREE.MathUtils.clamp(difference, -turnLimit, turnLimit);
-        const pitchLimit = individual.mode === "dart" ? 0.24 : 0.17;
+        const pitchLimit =
+          mode === "dart" ? 0.24 : mode === "inspect" ? 0.5 : 0.17;
         const pitch = THREE.MathUtils.lerp(
           Math.asin(individual.heading.y),
           Math.asin(THREE.MathUtils.clamp(target.y, -pitchLimit, pitchLimit)),
@@ -880,7 +518,7 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
           Math.sin(pitch),
           Math.sin(nextYaw) * Math.cos(pitch),
         );
-        if (individual.mode === "dart" || individual.mode === "relocate") {
+        if (mode === "dart" || mode === "relocate") {
           const aligned = Math.max(0, individual.heading.dot(target));
           desired
             .copy(individual.heading)
@@ -888,50 +526,45 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
         }
       }
       const response =
-        individual.mode === "dart"
-          ? 0.15
-          : individual.mode === "brake"
-            ? 0.27
-            : 0.72;
+        mode === "dart" ? 0.15 : mode === "brake" ? 0.27 : 0.72;
       acceleration.subVectors(desired, velocity).multiplyScalar(1 / response);
       acceleration.clampLength(
         0,
-        individual.mode === "dart"
-          ? 2.8
-          : individual.mode === "brake"
-            ? 1.7
-            : 0.7,
+        mode === "dart" ? 2.8 : mode === "brake" ? 1.7 : 0.7,
       );
       velocity.addScaledVector(acceleration, dt);
       velocity.multiplyScalar(Math.exp(-dt * 0.08));
       position.addScaledVector(velocity, dt);
-      clampToTank(position);
+      clampToBox(position, BOUNDS);
 
       const speed = velocity.length();
-      const turning =
+      // Yaw rate over speed is the curvature of the path; the body conforms to it,
+      // up to the C-bend a small fish can make, with the lag of its muscles.
+      const yawRate =
         (previousHeading.x * individual.heading.z -
           previousHeading.z * individual.heading.x) /
         Math.max(dt, 0.001);
-      individual.turn = THREE.MathUtils.lerp(
-        individual.turn,
-        THREE.MathUtils.clamp(turning, -1, 1),
+      const curvature = THREE.MathUtils.clamp(
+        yawRate / Math.max(speed, 0.35),
+        -1.8,
+        1.8,
+      );
+      individual.bend = THREE.MathUtils.lerp(
+        individual.bend,
+        curvature,
         1 - Math.exp(-dt * 5),
       );
       const braking =
-        individual.mode === "brake"
-          ? 1
-          : individual.mode === "hover"
-            ? 0.18
-            : 0;
+        mode === "brake" ? 1 : mode === "inspect" ? 0.5 : mode === "hover" ? 0.18 : 0;
       individual.finBrake = THREE.MathUtils.lerp(
         individual.finBrake,
         braking,
         1 - Math.exp(-dt * 6),
       );
       const effort =
-        individual.mode === "dart"
+        mode === "dart"
           ? 1
-          : individual.mode === "brake"
+          : mode === "brake"
             ? 0.18
             : Math.min(0.65, speed * 1.1 + acceleration.length() * 0.28);
       individual.effort = THREE.MathUtils.lerp(
@@ -939,14 +572,13 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
         effort,
         1 - Math.exp(-dt * 4.5),
       );
-      const frequency = 0.62 + individual.effort * 7.2;
+      const frequency = 0.9 + individual.effort * 7;
       individual.phase = (individual.phase + dt * TAU * frequency) % TAU;
-      const amplitude = 0.0032 + individual.effort * 0.057;
       swim.setXYZW(
         individual.id,
         individual.phase,
-        amplitude,
-        individual.turn,
+        0.5 + individual.effort * 1.7,
+        -individual.bend,
         individual.finBrake,
       );
 
@@ -954,7 +586,7 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
       axisY.crossVectors(axisZ, individual.heading).normalize();
       basis.makeBasis(individual.heading, axisY, axisZ);
       targetQuaternion.setFromRotationMatrix(basis);
-      bankQuaternion.setFromAxisAngle(FORWARD, -individual.turn * 0.13);
+      bankQuaternion.setFromAxisAngle(FORWARD, -individual.bend * 0.16);
       targetQuaternion.multiply(bankQuaternion);
       individual.quaternion.copy(targetQuaternion);
       scale.setScalar(individual.scale);
@@ -972,7 +604,7 @@ export function createFishSchool(scene, { obstacles = [] } = {}) {
     update,
     fish,
     getTelemetry() {
-      const states = { hover: 0, relocate: 0, dart: 0, brake: 0 };
+      const states = { hover: 0, relocate: 0, dart: 0, brake: 0, inspect: 0 };
       let totalSpeed = 0,
         maximumSpeed = 0;
       for (const individual of fish) {

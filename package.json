@@ -6,7 +6,7 @@
   "description": "An interactive freshwater aquascape rendered in WebGL2 and GLSL.",
   "scripts": {
     "start": "node serve.mjs",
-    "check": "node --check serve.mjs && node --check src/main.js && node --check src/math.js && node --check src/environment.js && node --check src/plants.js && node --check src/fish.js",
+    "check": "node --check serve.mjs && for f in src/*.js; do node --check \"$f\" || exit 1; done",
     "test": "node tests/fish-behavior.mjs"
   }
 }

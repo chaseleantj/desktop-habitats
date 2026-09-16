@@ -55,6 +55,15 @@ export function groundHeight(x, z) {
   );
 }
 
+export const smoothstep = (edge0, edge1, x) => {
+  const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+// Foliage vertices carry how they answer the current: `direction` is the way the strand
+// can bend (a blade bends across its face, a stem across its axis), `tangent` runs along
+// the strand, `distance` is how far along it the vertex sits, and `compliance` is how
+// readily the strand yields. `thin` is how much light the tissue lets through.
 export class GeometryBatch {
   constructor() {
     this.positions = [];
@@ -62,15 +71,20 @@ export class GeometryBatch {
     this.colors = [];
     this.indices = [];
     this.anchors = [];
-    this.flex = [];
+    this.bend = [];
+    this.along = [];
+    this.thin = [];
   }
-  vertex(p, uv, color, anchor = p, flex = 0) {
+  vertex(p, uv, color, anchor, strand, thin = 0) {
     const i = this.positions.length / 3;
     this.positions.push(p.x, p.y, p.z);
     this.uvs.push(...uv);
     this.colors.push(color.r, color.g, color.b);
     this.anchors.push(anchor.x, anchor.y, anchor.z);
-    this.flex.push(flex);
+    const { direction, tangent, distance, compliance } = strand;
+    this.bend.push(direction.x, direction.y, direction.z, compliance);
+    this.along.push(tangent.x, tangent.y, tangent.z, distance);
+    this.thin.push(thin);
     return i;
   }
   quad(a, b, c, d) {
@@ -85,7 +99,9 @@ export class GeometryBatch {
     g.setAttribute("uv", new THREE.Float32BufferAttribute(this.uvs, 2));
     g.setAttribute("color", new THREE.Float32BufferAttribute(this.colors, 3));
     g.setAttribute("anchor", new THREE.Float32BufferAttribute(this.anchors, 3));
-    g.setAttribute("flex", new THREE.Float32BufferAttribute(this.flex, 1));
+    g.setAttribute("bend", new THREE.Float32BufferAttribute(this.bend, 4));
+    g.setAttribute("along", new THREE.Float32BufferAttribute(this.along, 4));
+    g.setAttribute("thin", new THREE.Float32BufferAttribute(this.thin, 1));
     g.setIndex(this.indices);
     g.computeVertexNormals();
     return g;

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createEnvironment, createParticles } from "./environment.js";
 import { createPlants } from "./plants.js";
 import { createFishSchool } from "./fish.js";
+import { waterTime } from "./water.js";
 
 const canvas = document.querySelector("#scene");
 const aquarium = document.querySelector("#aquarium");
@@ -35,14 +36,16 @@ async function start() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color("#04100e");
-  scene.fog = new THREE.FogExp2("#071812", 0.026);
+  scene.background = new THREE.Color("#050f0c");
+  scene.fog = new THREE.FogExp2("#0a1c15", 0.031);
   const camera = new THREE.PerspectiveCamera(25.8, 1420 / 740, 0.2, 65);
   camera.position.set(0, 4.65, 20.5);
   camera.lookAt(0, 4.15, 0);
 
-  scene.add(new THREE.HemisphereLight(0xc3d7bd, 0x353427, 0.42));
-  const key = new THREE.DirectionalLight(0xfff8ee, 4.15);
+  // Overhead lamp with a soft skylight-like fill; the back light passes through the
+  // thin leaves and reads as their translucency.
+  scene.add(new THREE.HemisphereLight(0xc3d7bd, 0x353427, 0.3));
+  const key = new THREE.DirectionalLight(0xfff8ee, 4.5);
   key.position.set(-3, 11.5, 4.4);
   key.target.position.set(0, 1, 0);
   key.castShadow = true;
@@ -62,7 +65,7 @@ async function start() {
   const fill = new THREE.DirectionalLight(0xc2d8e4, 0.44);
   fill.position.set(1, 5, 10);
   scene.add(fill);
-  const back = new THREE.DirectionalLight(0xdbf9ba, 0.55);
+  const back = new THREE.DirectionalLight(0xdbf9ba, 0.8);
   back.position.set(2, 10, -4);
   scene.add(back);
 
@@ -98,10 +101,23 @@ async function start() {
   frontBounce.geometry.dispose();
   frontBounce.material.dispose();
 
-  const { obstacles } = await createEnvironment(scene);
+  // The tank's dark backboard: it catches a little of the lamp and the planting's shadows,
+  // so gaps between blades read as lit water in front of a wall rather than a void.
+  const backboard = new THREE.Mesh(
+    new THREE.PlaneGeometry(44, 24),
+    new THREE.MeshStandardMaterial({ color: 0x1d3a2c, roughness: 1 }),
+  );
+  backboard.position.set(0, 7, -7.2);
+  backboard.receiveShadow = true;
+  scene.add(backboard);
+  const { obstacles, landmarks } = await createEnvironment(scene);
   const plants = createPlants(scene);
-  const fish = createFishSchool(scene, { obstacles });
-  const particles = createParticles(scene);
+  const fish = createFishSchool(scene, {
+    obstacles,
+    landmarks,
+    thickets: plants.thickets,
+  });
+  const particles = createParticles(scene, { thickets: plants.thickets });
 
   const target = new THREE.WebGLRenderTarget(1, 1, {
     type: THREE.HalfFloatType,
@@ -152,6 +168,9 @@ async function start() {
     dimensions.set(width, height);
     camera.aspect = bounds.width / bounds.height;
     camera.updateProjectionMatrix();
+    particles.update(
+      height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)),
+    );
   }
   new ResizeObserver(resize).observe(aquarium);
   resize();
@@ -257,6 +276,7 @@ async function start() {
     measuring = {
       start: performance.now(),
       samples: [],
+      gpu: [],
       width: dimensions.x,
       height: dimensions.y,
     };
@@ -273,6 +293,21 @@ async function start() {
   const gpu = gpuInfo
     ? gl.getParameter(gpuInfo.UNMASKED_RENDERER_WEBGL)
     : gl.getParameter(gl.RENDERER);
+  // GPU timer queries measure the real render cost even when the display
+  // refresh rate caps the frame counter.
+  const timer = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+  const gpuQueries = [];
+  function collectGpuTimes(samples) {
+    if (!timer) return;
+    for (let i = gpuQueries.length - 1; i >= 0; i--) {
+      const query = gpuQueries[i];
+      if (!gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) continue;
+      if (!gl.getParameter(timer.GPU_DISJOINT_EXT))
+        samples.push(gl.getQueryParameter(query, gl.QUERY_RESULT) / 1e6);
+      gl.deleteQuery(query);
+      gpuQueries.splice(i, 1);
+    }
+  }
   function frame(now) {
     requestAnimationFrame(frame);
     const elapsed = now - last;
@@ -284,18 +319,23 @@ async function start() {
     const dt = Math.min(0.05, elapsed / 1000);
     if (!paused) {
       time += dt;
+      waterTime.value = time;
       fish.update(dt, time, pointer);
-      plants.update(time);
-      particles.update(time, resolution);
     }
     if (pointer) {
       pointer.strength *= Math.exp(-dt * 3.2);
       if (pointer.strength < 0.005) pointer = null;
     }
+    const query = measuring && timer ? gl.createQuery() : null;
+    if (query) gl.beginQuery(timer.TIME_ELAPSED_EXT, query);
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
     renderer.render(postScene, postCamera);
+    if (query) {
+      gl.endQuery(timer.TIME_ELAPSED_EXT);
+      gpuQueries.push(query);
+    }
     if (captureRequested) {
       captureRequested = false;
       canvas.toBlob((blob) => {
@@ -319,10 +359,15 @@ async function start() {
     }
     if (measuring) {
       measuring.samples.push(elapsed);
+      collectGpuTimes(measuring.gpu);
       if (now - measuring.start >= 15000) {
         const samples = measuring.samples.slice(1).sort((a, b) => a - b);
         const average = samples.reduce((a, b) => a + b, 0) / samples.length;
-        const text = `${measuring.width} × ${measuring.height} rendered pixels\n${(1000 / average).toFixed(1)} fps average · ${(1000 / samples[Math.floor(samples.length * 0.95)]).toFixed(1)} fps at 95th-percentile frame time\n${samples.length} frames / 15 seconds\n${gpu}\n${navigator.userAgent}`;
+        const gpuTimes = measuring.gpu.sort((a, b) => a - b);
+        const gpuText = gpuTimes.length
+          ? `\nGPU ${(gpuTimes.reduce((a, b) => a + b, 0) / gpuTimes.length).toFixed(2)} ms average · ${gpuTimes[Math.floor(gpuTimes.length * 0.95)].toFixed(2)} ms at 95th percentile`
+          : "";
+        const text = `${measuring.width} × ${measuring.height} rendered pixels\n${(1000 / average).toFixed(1)} fps average · ${(1000 / samples[Math.floor(samples.length * 0.95)]).toFixed(1)} fps at 95th-percentile frame time${gpuText}\n${samples.length} frames / 15 seconds\n${gpu}\n${navigator.userAgent}`;
         measurement.textContent = text;
         console.info("AQUARIUM BENCHMARK\n" + text);
         measuring = null;
@@ -335,7 +380,7 @@ async function start() {
         `${dimensions.x} × ${dimensions.y} · ${(1000 / avg).toFixed(1)} fps\n${paused ? "Paused" : `Live · ${time.toFixed(0)} s`} · WebGL2`;
       const telemetry = fish.getTelemetry();
       document.querySelector("#behavior").textContent =
-        `${telemetry.count} fish · ${telemetry.states.hover} hovering · ${telemetry.states.relocate} relocating\n${telemetry.states.dart} darting · ${telemetry.states.brake} braking\nPointer responses: ${telemetry.pointerResponses}`;
+        `${telemetry.count} fish · ${telemetry.states.hover} hovering · ${telemetry.states.relocate} relocating\n${telemetry.states.dart} darting · ${telemetry.states.brake} braking · ${telemetry.states.inspect} investigating\nPointer responses: ${telemetry.pointerResponses}`;
     }
   }
   requestAnimationFrame(frame);

@@ -5,12 +5,9 @@ register("./three-loader.mjs", import.meta.url);
 const THREE = await import("three");
 const { BOUNDS, COUNT, createFishSchool } = await import("../src/fish.js");
 const { FLOW_DIRECTION } = await import("../src/water.js");
+const { THICKETS } = await import("../src/plants.js");
 
 const STEP = 1 / 60;
-const THICKETS = [
-  { minX: -8.8, maxX: -1.9, minZ: -5.7, maxZ: -2, minY: 1.2, maxY: 6.5 },
-  { minX: 3.0, maxX: 8.7, minZ: -5.7, maxZ: -2, minY: 1.2, maxY: 6.5 },
-];
 const upstream = FLOW_DIRECTION.clone().negate();
 const behindGrass = (p) =>
   p.z < -2.2 && THICKETS.some((bed) => p.x > bed.minX && p.x < bed.maxX);

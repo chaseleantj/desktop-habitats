@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ROCKS } from "./environment.js";
+import { ROCKS, rockCenterY } from "./environment.js";
 import {
   groundHeight,
   noise,
@@ -52,7 +52,7 @@ function insideRock(point, host = -1) {
     const rock = ROCKS[i];
     // An epiphyte may lie against the rock it holds onto, but not inside any other.
     const shell = i === host ? 0.84 : 0.92;
-    const cy = groundHeight(rock.x, rock.z) + rock.ry * 0.57;
+    const cy = rockCenterY(rock);
     const radius = shell * Math.max(rock.rx, rock.rz);
     if (
       ((point.x - rock.x) / radius) ** 2 +
@@ -74,11 +74,7 @@ function rockFace(index, dx, dz) {
   const dy =
     ry * Math.sqrt(Math.max(0.05, 1 - (dx / rx) ** 2 - (dz / rz) ** 2));
   return {
-    point: vec(
-      rock.x + dx,
-      groundHeight(rock.x, rock.z) + rock.ry * 0.57 + dy,
-      rock.z + dz,
-    ),
+    point: vec(rock.x + dx, rockCenterY(rock) + dy, rock.z + dz),
     normal: vec(dx / rx ** 2, dy / ry ** 2, dz / rz ** 2).normalize(),
   };
 }
@@ -1035,27 +1031,23 @@ function crypt(
 // rocks, a lighter Echinodorus group at bottom right, and Cryptocoryne through the
 // midground and along the front glass.
 export function plantForeground(batch) {
-  // A colony of Anubias rhizomes on the sand, the front row low and spreading toward the
-  // glass, the back row taller where the substrate rises behind the rocks.
+  // A colony of Anubias rhizomes on the sand in the left corner, the front row low and
+  // spreading toward the glass, the back row taller where the substrate rises behind the
+  // stones. It stops short of the stones so they and the sand at their foot stay in view,
+  // and short of the glass so a strip of open sand runs under it.
   // x, z, blade length, leaves, rhizome heading.
   for (const [x, z, blade, leaves, heading] of [
-    [-9.15, 1.75, 0.765, 9, 0.5],
-    [-8.35, 1.5, 0.833, 10, -0.35],
-    [-7.5, 1.7, 0.762, 10, 1.15],
-    [-9.3, 0.8, 0.799, 9, 0.15],
-    [-8.5, 0.6, 0.901, 10, 0.95],
-    [-7.55, 0.8, 0.782, 9, -0.8],
-    [-6.75, 1.2, 0.744, 9, 1.4],
-    [-9.1, -0.2, 0.833, 10, 0.35],
-    [-8.2, -0.35, 0.918, 10, 1.55],
-    [-7.3, -0.15, 0.799, 9, -1.1],
-    [-9.25, -1.2, 0.816, 9, 0.1],
-    [-8.35, -1.4, 0.867, 10, 1.9],
-    [-7.45, -1.8, 0.782, 9, 2.5],
-    [-6.7, -2.3, 0.731, 8, 2.1],
-    [-8.8, -2.15, 0.799, 9, 1.2],
-    [-7.9, -2.75, 0.748, 8, 2.2],
-    [-8.0, 2.1, 0.75, 7, 0.7],
+    [-9.15, 0.85, 0.7, 9, 0.5],
+    [-8.3, 0.6, 0.84, 10, -0.35],
+    [-7.4, 0.9, 0.62, 8, 1.15],
+    [-9.3, -0.2, 0.8, 9, 0.15],
+    [-8.4, -0.45, 0.95, 10, 0.95],
+    [-7.35, -0.3, 0.74, 8, -0.8],
+    [-9.1, -1.3, 0.84, 10, 0.35],
+    [-8.1, -1.5, 0.92, 10, 1.55],
+    [-9.2, -2.3, 0.78, 9, 0.1],
+    [-8.2, -2.5, 0.88, 9, 1.9],
+    [-7.3, -2.9, 0.7, 8, 2.5],
   ]) {
     anubias(batch, {
       anchor: vec(x, 0, z),
@@ -1067,15 +1059,16 @@ export function plantForeground(batch) {
     });
   }
   // Epiphytes: the same species gripping a rock face, which is where it grows in a river.
-  // Climbing the backs of the left-hand rocks carries the mass up behind them without
-  // hiding them. rock index, offset from its centre, blade length, leaves, heading.
+  // They creep over the low left companion, one sits on the back of the secondary stone's
+  // crown so its leaves hang behind the face rather than across it, and one small plant
+  // sits on the right companion. rock index, offset from its centre, blade length, leaves,
+  // heading.
   for (const [index, dx, dz, blade, leaves, heading] of [
-    [3, -0.7, -0.2, 1.1, 7, 1.0],
-    [3, -0.15, -0.5, 1.0, 6, 2.5],
-    [3, -0.4, 0.4, 0.9, 6, 0.3],
-    [0, -0.85, -0.3, 1.0, 6, 1.5],
-    [0, -0.6, 0.35, 0.85, 5, 0.1],
-    [5, -0.5, 0.5, 0.62, 4, 2.2],
+    [3, -0.55, -0.2, 1.0, 7, 1.0],
+    [3, -0.1, -0.45, 0.9, 6, 2.5],
+    [3, -0.35, 0.35, 0.82, 6, 0.3],
+    [1, -0.6, -0.45, 0.95, 6, 2.2],
+    [2, -0.5, 0.5, 0.62, 4, 2.2],
   ]) {
     const face = rockFace(index, dx, dz);
     anubias(batch, {
@@ -1088,17 +1081,17 @@ export function plantForeground(batch) {
       surface: (px, pz) =>
         rockFace(index, px - ROCKS[index].x, pz - ROCKS[index].z).point.y,
       hue: between(0.285, 0.325),
-      open: vec(index === 5 ? 0.5 : -0.45, 0, 1).normalize(),
+      open: vec(index === 2 ? 0.5 : -0.45, 0, 1).normalize(),
     });
   }
-  // Echinodorus group at bottom right, between and in front of the right-hand rocks.
+  // Echinodorus group in the right corner, beyond the main stone and stepping down toward
+  // the glass, set back so open sand runs in front of it.
   for (const [x, z, blade, leaves] of [
-    [7.2, 0.75, 1.65, 11],
-    [6.25, 1.0, 1.45, 10],
-    [7.95, -0.15, 1.35, 9],
-    [5.65, 1.4, 1.2, 9],
-    [8.5, 0.85, 1.1, 8],
-    [6.8, 1.95, 1.0, 8],
+    [7.35, 0.4, 1.6, 11],
+    [8.3, -0.3, 1.35, 9],
+    [6.9, 1.0, 1.05, 8],
+    [8.75, 0.7, 0.95, 8],
+    [7.9, 1.25, 0.7, 6],
   ]) {
     echinodorus(batch, {
       x,
@@ -1109,25 +1102,28 @@ export function plantForeground(batch) {
       open: vec(0.5, 0, 1).normalize(),
     });
   }
-  // Cryptocoryne: a low bronze skirt at the front left, then scattered through the
-  // midground where the sand rises toward the grass.
-  for (const [x, z, blade, leaves] of [
-    [-8.9, 2.1, 0.8, 7],
-    [-6.5, 2.15, 0.78, 7],
-    [-5.45, 1.95, 0.66, 7],
-    [-9.4, 1.5, 0.72, 7],
-    [7.55, 2.15, 0.72, 7],
-    [8.8, 1.6, 0.64, 6],
-    [-2.75, -2.25, 1.0, 9],
-    [-1.85, -3.05, 0.9, 8],
-    [-0.35, -3.3, 1.05, 8],
-    [0.65, -2.5, 0.85, 7],
-    [2.1, -2.95, 0.8, 7],
-    [3.95, -2.4, 1.15, 9],
-    [-3.85, -2.75, 0.85, 7],
-    [5.2, -2.85, 0.9, 7],
-    [-4.35, 1.35, 0.6, 6],
-    [1.35, -1.75, 0.55, 5],
+  // Cryptocoryne wendtii in its green and bronze forms, planted the way crypts are bought
+  // and set: in small uneven groups. Two groups at the foot of the left stones, one plant
+  // at the right edge of the channel, and groups along either bank in the midground where
+  // the sand rises toward the grass. None stand in the channel or on the open sand at the
+  // glass. x, z, blade length, leaves, hue.
+  const BRONZE = 0.13,
+    GREEN = 0.27;
+  for (const [x, z, blade, leaves, hue] of [
+    [-7.0, 1.15, 0.8, 7, BRONZE],
+    [-6.55, 1.45, 0.6, 6, BRONZE],
+    [-5.15, 1.3, 0.66, 7, GREEN],
+    [-4.35, 1.2, 0.6, 6, GREEN],
+    [-3.75, 1.45, 0.52, 6, GREEN],
+    [3.9, 2.0, 0.5, 5, BRONZE],
+    [9.35, -1.35, 0.72, 7, GREEN],
+    [-2.75, -2.25, 1.0, 9, BRONZE],
+    [-1.85, -3.05, 0.9, 8, BRONZE],
+    [-0.35, -3.3, 1.05, 8, GREEN],
+    [-3.85, -2.75, 0.85, 7, BRONZE],
+    [2.9, -2.9, 0.8, 7, GREEN],
+    [3.95, -2.4, 1.15, 9, BRONZE],
+    [5.2, -2.85, 0.9, 7, BRONZE],
   ]) {
     if (rockClearance(x, z) < 1) continue;
     crypt(batch, {
@@ -1135,7 +1131,7 @@ export function plantForeground(batch) {
       z,
       blade,
       leaves,
-      hue: between(0.12, 0.2),
+      hue: hue + between(-0.02, 0.02),
       open: vec(x * 0.06, 0, 1).normalize(),
     });
   }

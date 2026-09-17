@@ -45,13 +45,24 @@ export function noise(x, y, z) {
   );
 }
 
+// The sand channel: the open path that runs in from the front glass, a little left of
+// centre, and curves back toward the foot of the wood, narrowing as it goes. It is 1 on
+// the centreline and falls to 0 on the banks. The substrate dips along it, and sediment,
+// algae and plants keep off it.
+export function channel(x, z) {
+  const centre = 0.3 - 0.25 * z;
+  const halfWidth = Math.max(0.45, 1.45 + 0.25 * z);
+  return Math.exp(-(((x - centre) / halfWidth) ** 2));
+}
+
 export function groundHeight(x, z) {
   return (
     0.12 +
     0.055 * Math.sin(x * 1.8 + z) +
     0.045 * Math.sin(z * 2.3 - x * 0.7) +
     0.34 * Math.max(0, -z / 5) +
-    0.14 * Math.exp(-((x + 5) ** 2 / 5 + (z + 1) ** 2 / 4))
+    0.14 * Math.exp(-((x + 5) ** 2 / 5 + (z + 1) ** 2 / 4)) -
+    0.2 * channel(x, z)
   );
 }
 

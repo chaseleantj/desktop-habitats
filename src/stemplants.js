@@ -165,8 +165,22 @@ function nodeParameters(curve, apexGap, baseGap) {
 // How much light reaches a point in the stand. The gradient down a stem comes far more from
 // the canopy above it than from the water above that, so it is a function of absolute
 // height: a short shoot is dark all the way up, while a tall one is bright only where it
-// clears its neighbours. `exposure` is how open the clump itself stands.
-const lightAt = (y, exposure) => Math.min(1, exposure * smoothstep(0.9, 7.4, y));
+// clears its neighbours. `exposure` is how open the clump itself stands, and `canopy` is
+// the height its stand grows to: a low mound standing on its own in the midground is lit
+// nearly to the sand.
+const CANOPY = 7.4;
+const lightAt = (y, exposure, canopy = CANOPY) =>
+  Math.min(1, exposure * smoothstep(0.12 * canopy, canopy, y));
+// Dying back: in the dark strip at the foot of the stand, where almost no light gets
+// through, leaves thin out and then go altogether, leaving bare stem. It takes both, deep
+// in the stand and low on this shoot, at parameter `t`; a short plant's crown is shaded
+// but it is still the crown, and keeps its leaves.
+const diebackAt = (y, t, exposure, canopy = CANOPY) =>
+  Math.min(
+    smoothstep(0.345 * canopy, 0.078 * canopy, y),
+    smoothstep(0.44, 0.06, t),
+  ) *
+  (1.15 - 0.35 * exposure);
 
 const SENESCENT = new THREE.Color("#6f5f2e");
 
@@ -184,6 +198,7 @@ function branchesOf(grow, batch, plant, curve, nodes, branches) {
       anchor: plant.anchor,
       height: plant.height * range(0.42, 0.76),
       exposure: plant.exposure * range(0.9, 1.06),
+      canopy: plant.canopy,
       compliance: plant.compliance * range(1, 1.12),
       path: {
         leanAngle: azimuth,
@@ -205,7 +220,15 @@ function branchesOf(grow, batch, plant, curve, nodes, branches) {
 // yellow-green where the light is strong; the lower stem, in the dark under the stand,
 // carries fewer, shorter, flatter, darker leaves and has dropped some whorls entirely.
 function limnophila(batch, plant) {
-  const { root, height, exposure, compliance, path, branches = 0 } = plant;
+  const {
+    root,
+    height,
+    exposure,
+    canopy = CANOPY,
+    compliance,
+    path,
+    branches = 0,
+  } = plant;
   const anchor = plant.anchor ?? root;
   const radius = 0.015 + 0.008 * Math.min(1, height / 7.5);
   const { curve, length } = stem(
@@ -252,18 +275,13 @@ function limnophila(batch, plant) {
     const center = curve.getPoint(t);
     const node = plant.attach ?? stemStrand(curve, t, length, compliance);
     const fromApex = last - i;
-    const light = lightAt(center.y, exposure);
+    const light = lightAt(center.y, exposure, canopy);
     // A leaf is laid down at the apex and reaches full length about three nodes later, by
     // which time the internode beneath it has extended too.
     const expand = 0.26 + 0.74 * smoothstep(0, 2.8, fromApex);
     const young = 1 - smoothstep(0, 4, fromApex);
-    // Dying back: in the dark strip at the foot of the stand, where almost no light gets
-    // through, the whorls thin out and then go altogether, leaving bare stem. It takes
-    // both — deep in the stand, and low on this shoot; a short plant's crown is shaded but
-    // it is still the crown, and keeps its leaves.
-    const dieback =
-      Math.min(smoothstep(2.6, 0.6, center.y), smoothstep(0.44, 0.06, t)) *
-      (1.15 - 0.35 * exposure);
+    // Shed whorls leave bare stem at the foot of the stand.
+    const dieback = diebackAt(center.y, t, exposure, canopy);
     if (dieback > 0.5 && random() < dieback * 0.9) continue;
     // How many leaves a whorl carries is the species, not the light. Shade shows in the
     // internode, in the leaf's length and narrowness, and in shed whorls, not in the count.
@@ -329,7 +347,15 @@ function limnophila(batch, plant) {
 // creeps as it goes. Well-lit shoots run bronze over the top few pairs; the lowest leaves
 // brown and go.
 function hygrophila(batch, plant) {
-  const { root, height, exposure, compliance, path, branches = 0 } = plant;
+  const {
+    root,
+    height,
+    exposure,
+    canopy = CANOPY,
+    compliance,
+    path,
+    branches = 0,
+  } = plant;
   const anchor = plant.anchor ?? root;
   const radius = 0.014 + 0.007 * Math.min(1, height / 6);
   const { curve, length } = stem(
@@ -373,12 +399,10 @@ function hygrophila(batch, plant) {
     const center = curve.getPoint(t);
     const node = plant.attach ?? stemStrand(curve, t, length, compliance);
     const fromApex = last - i;
-    const light = lightAt(center.y, exposure);
+    const light = lightAt(center.y, exposure, canopy);
     const expand = 0.24 + 0.76 * smoothstep(0, 2.4, fromApex);
     const young = 1 - smoothstep(0, 3.4, fromApex);
-    const dieback =
-      Math.min(smoothstep(2.5, 0.55, center.y), smoothstep(0.44, 0.06, t)) *
-      (1.15 - 0.35 * exposure);
+    const dieback = diebackAt(center.y, t, exposure, canopy);
     if (dieback > 0.55 && random() < dieback * 0.8) continue;
     const rise = 0.12 + 0.5 * young + 0.28 * light - 0.35 * dieback;
     // A broad leaf is stiff enough to hold itself out nearly straight, and only its last
@@ -430,14 +454,19 @@ function hygrophila(batch, plant) {
   if (branches) branchesOf(hygrophila, batch, plant, curve, nodes, branches);
 }
 
-// The stands, as the reference has them: dense at both sides, where the feathery stems rise
-// past the top of the frame, and one sparser, shadier group behind the wood in the middle.
-// Stem plants are planted in bunches and then branch from their lowest nodes, so they stand
-// in clumps of unequal shoots sharing a crown, not as scattered singles.
+// The stands: dense at both sides, where the feathery stems rise past the top of the
+// frame; one short, sparse, shade-grown group in the middle of the back, behind the wood,
+// where the channel opens into dark water; and two well-lit, small-leaved mounds in the
+// midground that step the planting down from the grass to the sand, one on the left bank
+// of the channel and one behind the main stone. Stem plants are planted in bunches and
+// then branch from their lowest nodes, so they stand in clumps of unequal shoots sharing a
+// crown, not as scattered singles.
 const BANDS = [
   { x: [-10.6, -6.2], z: [-6.0, -3.1], clumps: 11, shoots: [3, 5], height: [5.4, 10.2], exposure: [0.94, 1.16], feathery: 0.78 },
   { x: [5.6, 10.6], z: [-6.0, -3.1], clumps: 10, shoots: [3, 5], height: [5.2, 10.0], exposure: [0.9, 1.12], feathery: 0.74 },
-  { x: [-4.2, 4.4], z: [-5.9, -3.2], clumps: 10, shoots: [2, 4], height: [4.4, 8.6], exposure: [0.66, 1.0], feathery: 0.55 },
+  { x: [-3.0, 3.6], z: [-5.9, -3.4], clumps: 9, shoots: [2, 4], height: [4.2, 7.6], exposure: [0.5, 0.8], feathery: 0.5 },
+  { x: [-3.5, -0.9], z: [-3.4, -1.6], clumps: 7, shoots: [4, 6], height: [2.4, 4.2], exposure: [0.95, 1.15], feathery: 0.1, canopy: 2.6 },
+  { x: [4.3, 5.4], z: [-2.9, -1.7], clumps: 3, shoots: [3, 5], height: [2.2, 3.4], exposure: [0.9, 1.1], feathery: 0.1, canopy: 2.4 },
 ];
 
 export function plantStems(batch) {
@@ -484,6 +513,7 @@ export function plantStems(batch) {
           height,
           // A shoot at the edge of the clump sees more light than the one inside it.
           exposure: exposure * (s === 0 ? 0.92 : range(0.98, 1.12)),
+          canopy: band.canopy,
           compliance: feathery ? range(0.46, 0.64) : range(0.3, 0.44),
           branches: height > 4.6 && random() < 0.42 ? (random() < 0.28 ? 2 : 1) : 0,
           path: {

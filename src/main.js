@@ -50,10 +50,12 @@ async function start() {
   key.target.position.set(0, 1, 0);
   key.castShadow = true;
   key.shadow.mapSize.set(4096, 4096);
+  // The frustum reaches the foot of the backboard behind the right-hand bed; a fragment
+  // outside the shadow map is lit as if nothing stood in front of it.
   Object.assign(key.shadow.camera, {
     left: -12,
     right: 12,
-    top: 10,
+    top: 14,
     bottom: -10,
     near: 1,
     far: 27,

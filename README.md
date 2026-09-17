@@ -49,7 +49,9 @@ npm run unwallpaper
 
 Files and folders stay on top of the water and behave normally: the window sits at the desktop window level, below the icons, and never takes a mouse event. The fish still see the cursor, because the agent reads its position and passes it to the page rather than capturing it.
 
-The frame rate follows what is worth drawing. A scene this size costs the graphics processor ten to twenty watts at full rate, so it stops entirely behind a full screen of work, a locked screen or a sleeping display, slows to 20 frames a second when windows leave only part of it showing, and runs at 60 on mains power or 30 on battery when the desktop is in plain sight. It renders one pixel per screen pixel. `kill -USR1` on the agent writes what it is drawing to `/tmp/aquarium-wallpaper.png`; page errors and rate changes go to `/tmp/aquarium-wallpaper.log`.
+A fish in the menu bar is the only visible part of the agent. Its menu says what the wallpaper is doing, and why it is holding still when it is, since most of the reasons are deliberate. **Pause** stops the water on its last frame and is remembered at the next login. **Quit** leaves the still picture behind and stays quit until you log in again.
+
+The frame rate follows what is worth drawing. A scene this size costs the graphics processor ten to twenty watts at full rate, so it stops entirely in Low Power Mode, behind a full screen of work, a locked screen or a sleeping display, slows to 20 frames a second when windows leave only part of it showing, and runs at 60 on mains power or 30 on battery when the desktop is in plain sight. It renders one pixel per screen pixel. `kill -USR1` on the agent writes what it is drawing to `/tmp/aquarium-wallpaper.png`; page errors and rate changes go to `/tmp/aquarium-wallpaper.log`.
 
 ## Files
 

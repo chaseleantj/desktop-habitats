@@ -243,7 +243,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   }
 }
 
-final class Controller: NSObject, NSApplicationDelegate {
+final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   static var shared: Controller?
   private var screens: [Wallpaper] = []
   private var root = Bundle.main.resourceURL!.appendingPathComponent("scene")
@@ -251,10 +251,18 @@ final class Controller: NSObject, NSApplicationDelegate {
   private var layout: [CGRect] = []
   private var lastPoint = NSPoint(x: -1e4, y: -1e4)
   private var snapshots: DispatchSourceSignal?
+  private var status: NSStatusItem?
+  private let state = NSMenuItem()
+  private let pause = NSMenuItem()
+  private var applied = 0
+  /// The choice outlives a restart, so a paused tank is still paused after logging in.
+  private var stopped = UserDefaults.standard.bool(forKey: "paused")
+  private var lowPower: Bool { ProcessInfo.processInfo.isLowPowerModeEnabled }
 
   func applicationDidFinishLaunching(_ note: Notification) {
     Controller.shared = self
     build()
+    addMenu()
 
     let center = NotificationCenter.default
     center.addObserver(
@@ -282,6 +290,11 @@ final class Controller: NSObject, NSApplicationDelegate {
         self?.applyRate()
       }
     }
+
+    // Low Power Mode holds the scene still, like any other reason not to draw.
+    NotificationCenter.default.addObserver(
+      forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
+    ) { [weak self] _ in self?.applyRate() }
 
     // Running on the battery halves the frame rate; the scene is slow enough to hold up.
     if let source = IOPSNotificationCreateRunLoopSource({ _ in
@@ -342,10 +355,14 @@ final class Controller: NSObject, NSApplicationDelegate {
   /// A full-rate scene at this size costs the graphics processor ten to twenty watts, which
   /// is worth spending only on water somebody is actually looking at.
   func applyRate() {
-    let full = onBattery || ProcessInfo.processInfo.isLowPowerModeEnabled ? 30 : 60
+    let full = onBattery ? 30 : 60
+    let still = stopped || lowPower || !awake
+    applied = 0
     for (index, screen) in screens.enumerated() {
       let showing = index < layout.count ? exposure(layout[index]) : 1
-      screen.setRate(!awake || showing < 0.15 ? 0 : showing < 0.4 ? 20 : full)
+      let rate = still || showing < 0.15 ? 0 : showing < 0.4 ? 20 : full
+      screen.setRate(rate)
+      applied = max(applied, rate)
     }
   }
 
@@ -383,6 +400,67 @@ final class Controller: NSObject, NSApplicationDelegate {
       }
     }
     return Double(free) / Double(columns * rows)
+  }
+
+  // MARK: - The menu bar
+
+  /// The agent's only visible piece: a fish in the menu bar that can stop the water.
+  private func addMenu() {
+    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    let symbol = NSImage(systemSymbolName: "fish", accessibilityDescription: "Aquarium wallpaper")
+    symbol?.isTemplate = true
+    item.button?.image = symbol
+    if symbol == nil { item.button?.title = "Aquarium" }
+    item.button?.toolTip = "Aquarium wallpaper"
+
+    let menu = NSMenu()
+    menu.delegate = self
+    // The items say for themselves when they are available; AppKit's own guess would
+    // leave Pause enabled in Low Power Mode, where pressing it would do nothing.
+    menu.autoenablesItems = false
+    state.isEnabled = false
+    menu.addItem(state)
+    menu.addItem(.separator())
+    pause.target = self
+    pause.action = #selector(togglePause)
+    menu.addItem(pause)
+    menu.addItem(.separator())
+    let leave = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+    leave.target = self
+    menu.addItem(leave)
+    item.menu = menu
+    status = item
+    if item.button?.window == nil || !item.isVisible {
+      NSLog("aquarium wallpaper: the menu bar item did not appear")
+    }
+  }
+
+  /// Says what the wallpaper is doing, and why, whenever the menu is opened. Most of the
+  /// reasons it holds still are deliberate, and unexplained stillness reads as a fault.
+  func menuNeedsUpdate(_ menu: NSMenu) {
+    state.title =
+      lowPower
+      ? "Still, for Low Power Mode"
+      : stopped
+        ? "Paused"
+        : !awake
+          ? "Still, the screen is off"
+          : applied == 0
+            ? "Resting behind your windows"
+            : "Running at \(applied) frames a second"
+    pause.title = stopped ? "Resume" : "Pause"
+    // In Low Power Mode nothing is going to draw, so the item would be a false promise.
+    pause.isEnabled = !lowPower
+  }
+
+  @objc private func togglePause() {
+    stopped.toggle()
+    UserDefaults.standard.set(stopped, forKey: "paused")
+    applyRate()
+  }
+
+  @objc private func quit() {
+    NSApp.terminate(nil)
   }
 
   /// The cursor belongs to the Finder, so its position is read rather than captured.

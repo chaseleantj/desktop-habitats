@@ -175,9 +175,13 @@ async function start() {
   new ResizeObserver(resize).observe(aquarium);
   resize();
 
+  // The pointer is a hand at the front glass. The fish read where it is and how fast it
+  // is coming toward them, so its velocity is kept, smoothed over a few events, and let
+  // die away once the events stop.
   let pointer = null,
     lastPointerTime = 0;
   const pointerPosition = new THREE.Vector3();
+  const pointerSample = new THREE.Vector3();
   const raycaster = new THREE.Raycaster();
   const waterPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -2.6);
   canvas.addEventListener("pointermove", (event) => {
@@ -189,18 +193,18 @@ async function start() {
     raycaster.setFromCamera(normalized, camera);
     if (raycaster.ray.intersectPlane(waterPlane, pointerPosition)) {
       const now = performance.now();
-      const speed = pointer
-        ? Math.min(
-            1,
-            pointer.position.distanceTo(pointerPosition) /
-              Math.max(0.016, (now - lastPointerTime) / 1000) /
-              16,
-          )
-        : 0.2;
-      pointer = {
-        position: pointerPosition.clone(),
-        strength: Math.max(speed, pointer?.strength || 0),
-      };
+      if (pointer) {
+        const seconds = Math.max(0.004, (now - lastPointerTime) / 1000);
+        pointerSample
+          .subVectors(pointerPosition, pointer.position)
+          .divideScalar(seconds);
+        pointer.velocity.lerp(pointerSample, 0.5);
+        pointer.position.copy(pointerPosition);
+      } else
+        pointer = {
+          position: pointerPosition.clone(),
+          velocity: new THREE.Vector3(),
+        };
       lastPointerTime = now;
     }
   });
@@ -322,10 +326,8 @@ async function start() {
       waterTime.value = time;
       fish.update(dt, time, pointer);
     }
-    if (pointer) {
-      pointer.strength *= Math.exp(-dt * 3.2);
-      if (pointer.strength < 0.005) pointer = null;
-    }
+    if (pointer && now - lastPointerTime > 60)
+      pointer.velocity.multiplyScalar(Math.exp(-dt * 12));
     const query = measuring && timer ? gl.createQuery() : null;
     if (query) gl.beginQuery(timer.TIME_ELAPSED_EXT, query);
     renderer.setRenderTarget(target);
@@ -380,7 +382,7 @@ async function start() {
         `${dimensions.x} × ${dimensions.y} · ${(1000 / avg).toFixed(1)} fps\n${paused ? "Paused" : `Live · ${time.toFixed(0)} s`} · WebGL2`;
       const telemetry = fish.getTelemetry();
       document.querySelector("#behavior").textContent =
-        `${telemetry.count} fish · ${telemetry.states.hover} hovering · ${telemetry.states.relocate} relocating\n${telemetry.states.dart} darting · ${telemetry.states.brake} braking · ${telemetry.states.inspect} investigating\nPointer responses: ${telemetry.pointerResponses}`;
+        `${telemetry.count} fish · ${telemetry.states.hover} hovering · ${telemetry.states.travel} travelling · ${telemetry.states.inspect} investigating\n${telemetry.twitching} twitching · ${telemetry.states.settle} settling · ${telemetry.states.escape} escaping\nStartles: ${telemetry.pointerResponses} at the glass · ${telemetry.escapes} in all`;
     }
   }
   requestAnimationFrame(frame);

@@ -14,6 +14,7 @@ import {
   surfaceLightGLSL,
   waterLitShader,
   waterTime,
+  CURRENT_SPEED,
 } from "./water.js";
 
 const TAU = Math.PI * 2;
@@ -819,8 +820,7 @@ export function createParticles(scene, { thickets }) {
           vFade = smoothstep(0.0, 0.15, age) * (1.0 - step(travel, risen));
         } else {
           // Neutrally buoyant flecks ride the current, sinking a little, tumbling as they go.
-          float carried = 0.62 * t - (0.30 / 0.11) * cos(t * 0.11 - position.x * 0.34 - position.z * 0.19);
-          p += FLOW_DIRECTION * carried * (0.6 + seed * 0.5);
+          p += FLOW_DIRECTION * currentTravel(position, t) * ${CURRENT_SPEED.toFixed(3)} * (0.75 + seed * 0.5);
           p.x = mod(p.x + 9.5, 19.0) - 9.5;
           p.z = mod(p.z + 5.6, 9.2) - 5.6;
           p.y = mod(position.y - t * (0.012 + seed * 0.02) - 0.3, 9.4) + 0.3;

@@ -108,6 +108,41 @@ const RAY_SUBDIVISIONS = 4;
 // the ventral. Visible only when a scale covers more than a pixel.
 const SCALE_ROWS = [34, 11];
 
+// Light transport through the body wall. The path is the width of the section at the
+// fragment, which the rest position already carries in z. One model unit is 62 mm, so
+// these are the effective attenuation coefficients of pale fish muscle — 0.55, 1.35 and
+// 1.75 per mm: blood and myoglobin take green and blue out several times faster than
+// red, which is why a small fish lit from behind glows pink-orange where it is thin.
+const MUSCLE_ABSORPTION = [34, 84, 109];
+// Scattering, 2.6 per mm. It decides how much of what survives the path comes back out
+// towards the eye rather than carrying straight on: a millimetre of muscle diffuses
+// almost everything, a fin membrane hardly redirects the light at all.
+const TISSUE_SCATTER = 160;
+// Skin, scales and the muscle immediately under them: the shortest path anywhere on the
+// body, and what keeps the ridges from reading as a white rim rather than warm tissue.
+const MUSCLE_FLOOR = 0.012;
+// A fin membrane is a fraction of a millimetre of collagen. Its red is carotenoid in the
+// rays' sheath, which absorbs green and blue almost completely at full strength; the rays
+// themselves are bone splints, so they stand in a backlit fin as dark striations however
+// bright they look by reflection.
+const MEMBRANE_THICKNESS = 0.004;
+const FIN_PIGMENT = [0.25, 2.0, 2.6];
+const FIN_RAY_DENSITY = 0.5;
+// Myomeres, roughly one per vertebra, their septa swept forward at mid-depth into the
+// chevron that shows when the caudal muscle is lit through. Cycles per model unit.
+const MYOMERE_PITCH = 52;
+// Tissue a millimetre thick scatters light out broadly rather than as a forward beam, so
+// the view-dependent lobe sits on a wrap-around floor and the distortion bends it toward
+// the surface normal (Barré-Brisebois). The ambient share is the same transport applied
+// to the light that arrives from every direction at once.
+const THROUGH = {
+  gain: 2.0,
+  wrap: 0.35,
+  sharpness: 2.0,
+  distortion: 0.22,
+  ambient: 0.55,
+};
+
 const glsl = (value) => value.toFixed(5);
 
 // Smooth interpolation through the station knots. Slopes are the neighbours' secant,
@@ -776,11 +811,17 @@ export function applySkin(shader) {
   if (!/vWaterPosition/.test(shader.vertexShader)) {
     waterLitShader(shader, {
       perLight: /* glsl */ `
-        #ifdef FISH_MEMBRANE
-          // A fin is one cell thick: light reaching the far face comes through it.
-          float finThrough = max(0.0, -dot(geometryNormal, directLight.direction));
-          reflectedLight.directDiffuse += lit.color * material.diffuseColor * finThrough * 1.15;
-        #endif
+        // Light that entered the far face and scattered out towards the eye. What enters
+        // still obeys Lambert on the face it crosses, so the leak is strongest where the
+        // surface turns away from the light; what survives the path is in gFishThrough,
+        // and the lobe is how much of it leaves towards the viewer rather than sideways.
+        float enter = max(0.0, -dot(geometryNormal, directLight.direction));
+        vec3 through = normalize(directLight.direction
+          + geometryNormal * ${glsl(THROUGH.distortion)});
+        float lobe = ${glsl(THROUGH.wrap)}
+          + pow(max(dot(geometryViewDir, -through), 0.0), ${glsl(THROUGH.sharpness)});
+        reflectedLight.directDiffuse += lit.color * gFishThrough
+          * enter * lobe * ${glsl(THROUGH.gain)} * RECIPROCAL_PI;
       `,
     });
   }
@@ -793,11 +834,25 @@ export function applySkin(shader) {
       varying vec2 vFishUV;
       varying float vFishPart;
 
+      // What the tissue under this fragment passes: set once the anatomy is known, read
+      // back by every light below.
+      vec3 gFishThrough = vec3(0.0);
+
+      const vec3 FISH_ABSORPTION = vec3(${MUSCLE_ABSORPTION.map(glsl).join(", ")});
+      const vec3 FISH_FIN_PIGMENT = vec3(${FIN_PIGMENT.map(glsl).join(", ")});
       const vec2 FISH_SCALES = vec2(${glsl(SCALE_ROWS[0])}, ${glsl(SCALE_ROWS[1])});
       const vec2 FISH_EYE = vec2(${glsl(EYE.x)}, ${glsl(EYE.y)});
       const vec2 FISH_EYE_RADIUS = vec2(${glsl(EYE.radiusX)}, ${glsl(EYE.radiusY)});
 
       float fishHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+      // What a slab of tissue this thick sends back out diffusely: what survives the
+      // absorption along the path, the tissue's own and any pigment standing in it,
+      // times the share the tissue scatters instead of passing straight on.
+      vec3 fishThrough(float path, vec3 pigment) {
+        return exp(-FISH_ABSORPTION * path - pigment)
+          * (1.0 - exp(-${glsl(TISSUE_SCATTER)} * path));
+      }
 
       // Imbricate rows: every row is offset half a scale from its neighbour and the
       // rows run slightly diagonally, as a characin's do.
@@ -842,11 +897,28 @@ export function applySkin(shader) {
           .join("\n        ")}
         return 2.0;
       }
-      // Guanine platelets stacked under the scales make a broadband reflector. It
-      // covers the flank between the dark dorsum and the scattering belly, and it is
-      // tuned blue-green, which is why the band flares cyan off normal.
-      float fishReflector(float band) {
-        return smoothstep(0.07, 0.24, band) * (1.0 - smoothstep(0.58, 0.92, band));
+      // Guanine platelets stacked under the scales make a broadband reflector. It covers
+      // the flank between the dark dorsum and the scattering belly, and it is tuned
+      // blue-green, which is why the band flares cyan off normal. The layer is thickest
+      // where it doubles as the lining of the body cavity and thins over the caudal
+      // muscle, which passes light instead of mirroring it.
+      float fishReflector(float band, float x) {
+        return smoothstep(0.07, 0.24, band) * (1.0 - smoothstep(0.58, 0.92, band))
+          * mix(0.70, 1.0, smoothstep(-0.195, 0.015, x));
+      }
+      // The peritoneum: the silvered sheet lining the body cavity, from behind the
+      // pectoral girdle back to the anal fin origin and from the belly up to the swim
+      // bladder under the spine. Gut and bladder fill it, so nothing gets through.
+      float fishCavity(float x, float band) {
+        return smoothstep(-0.080, -0.020, x) * (1.0 - smoothstep(0.140, 0.180, x))
+          * smoothstep(0.34, 0.47, band);
+      }
+      // The vertebral column and the septa between the muscle blocks stand in the path
+      // behind the cavity: a denser line along the axis with a faint chevron either side.
+      float fishAxialShadow(float x, float y) {
+        float column = exp(-pow(y / 0.011, 2.0));
+        float phase = (x + 0.007 * cos(y * 30.0)) * ${glsl(MYOMERE_PITCH)};
+        return 0.62 * column - 0.06 * cos(PI2 * phase) * fishFade(vec2(phase, 0.0));
       }
     `,
     )
@@ -928,6 +1000,18 @@ export function applySkin(shader) {
         skin = mix(skin, vec3(0.520, 0.455, 0.235), ring * 0.8);
 
         diffuseColor.rgb = skin;
+
+        // Behind the body cavity the wall is thin swimming muscle, and a small fish's
+        // muscle passes light. The path is the width of the section here, so the caudal
+        // peduncle and the dorsal and ventral ridges leak most, while the silvered
+        // cavity, the skull and the column leak nothing. The gill chamber is the one
+        // place light crosses the head, through the thin opercular flap.
+        float path = max(abs(vSkinPoint.z) * 2.0, ${glsl(MUSCLE_FLOOR)});
+        float wall = (1.0 - max(fishHead, fishCavity(fishX, fishBand)))
+          * (1.0 - 0.55 * fishReflector(fishBand, fishX))
+          * (1.0 - fishAxialShadow(fishX, fishY));
+        gFishThrough = fishThrough(path, vec3(0.0)) * wall
+          + vec3(0.24, 0.055, 0.038) * gill;
       } else if (vFishPart < 6.5 || vFishPart > 11.5) {
         float caudal = 1.0 - step(1.5, vFishPart);
         float pectoral = step(3.5, vFishPart) * (1.0 - step(5.5, vFishPart));
@@ -963,6 +1047,11 @@ export function applySkin(shader) {
           twig * fishFade(vec2(along * rays * 4.0, span)), 0.0, 1.0);
         vec3 rayTint = diffuseColor.rgb * 0.68 + vec3(0.088, 0.082, 0.072);
         diffuseColor.rgb = mix(diffuseColor.rgb, rayTint, ribs * 0.85);
+
+        // Hyaline membrane: thin enough that most of the light carries straight through
+        // it rather than scattering back, which is what keeps a fin see-through.
+        gFishThrough = fishThrough(${glsl(MEMBRANE_THICKNESS)},
+          FISH_FIN_PIGMENT * pigment + ${glsl(FIN_RAY_DENSITY)} * ribs);
         #ifdef FISH_MEMBRANE
           // Thickness falls away toward the free margin; pigment and rays add body.
           float thickness = mix(1.0, mix(0.34, 0.50, caudal), smoothstep(0.06, 1.0, span));
@@ -996,7 +1085,8 @@ export function applySkin(shader) {
         // reading as a mirror set into a fish rather than as chrome plating.
         // Guanine sits under the scales and in the opercle and cheek plates. The
         // snout, jaws and skull roof carry none, so they stay dull dielectric.
-        float scaled = fishReflector(fishBand) * (1.0 - smoothstep(0.155, 0.205, fishX));
+        float scaled = fishReflector(fishBand, fishX)
+          * (1.0 - smoothstep(0.155, 0.205, fishX));
         float plate = exp(-pow((fishX - 0.200) / 0.038, 2.0))
           * smoothstep(0.22, 0.46, fishBand) * (1.0 - smoothstep(0.80, 0.96, fishBand));
         metalnessFactor = clamp(0.06 + 0.36 * max(scaled, plate), 0.0, 0.44);
@@ -1070,14 +1160,24 @@ export function applySkin(shader) {
       #ifdef USE_IRIDESCENCE
         // Thin-film interference over the guanine stack, mottled scale by scale.
         float sheenBand = vFishPart < 0.5
-          ? fishReflector(clamp(vFishUV.y, 0.0, 1.0))
-            * smoothstep(-0.30, -0.22, vSkinPoint.x)
+          ? fishReflector(fishBand, fishX) * smoothstep(-0.30, -0.22, fishX)
           : 0.0;
         material.iridescence *= 0.12 + sheenBand * 0.88;
         material.iridescenceThickness = 230.0
           + fishHash(floor(fishScaleGrid())) * 160.0
           + fishHash(floor(fishScaleGrid() * 0.34)) * 110.0;
       #endif
+    `,
+    )
+    .replace(
+      "#include <lights_fragment_end>",
+      /* glsl */ `
+      #include <lights_fragment_end>
+      // The same transport for the light that arrives from everywhere, so the thin
+      // places read lit through even with nothing behind them. View-independent, and
+      // small enough to leave the modelling alone.
+      reflectedLight.indirectDiffuse += (irradiance + iblIrradiance) * gFishThrough
+        * ${glsl(THROUGH.ambient)} * RECIPROCAL_PI;
     `,
     );
 }

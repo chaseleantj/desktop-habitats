@@ -1,25 +1,55 @@
 import * as THREE from "three";
 
 // One clock and one water model for everything the water touches: the current
-// that bends plants and carries debris, and the light refracted by the surface.
+// that bends plants, carries debris and pushes the fish, and the light refracted
+// by the surface.
 export const waterTime = { value: 0 };
 export const SURFACE_Y = 10;
 export const FLOW_DIRECTION = new THREE.Vector3(1, 0, 0.22).normalize();
 
-const vec3 = (v) => `vec3(${v.x.toFixed(4)}, ${v.y.toFixed(4)}, ${v.z.toFixed(4)})`;
-
 // Filter return runs left to right with a slight drift toward the front glass. A slow
 // pressure wave travels across the tank so neighbours respond in turn, and finer eddies
-// keep any two strands from moving in lockstep.
+// keep any two strands from moving in lockstep. Strength is the flow as a multiple of the
+// design flow; the water moves CURRENT_SPEED scene units per second per unit of strength.
+// A scene unit is about six centimetres, so the mean flow in the open water is about a
+// centimetre and a half a second, the gentle return of a planted tank.
+const CURRENT = {
+  mean: 0.31,
+  waves: [
+    { amplitude: 0.15, rate: 0.055, kx: -0.34, kz: -0.19 },
+    { amplitude: 0.03, rate: 0.235, kx: 1.7, kz: 1.1 },
+    { amplitude: 0.03, rate: 0.155, kx: 0.6, kz: -2.3 },
+  ],
+};
+export const CURRENT_SPEED = 0.85;
+
+const vec3 = (v) => `vec3(${v.x.toFixed(4)}, ${v.y.toFixed(4)}, ${v.z.toFixed(4)})`;
+const number = (v) => (Number.isInteger(v) ? `${v}.0` : `${v}`);
+const wavePhase = ({ rate, kx, kz }) =>
+  `t * ${number(rate)} + p.x * ${number(kx)} + p.z * ${number(kz)}`;
+
 export const currentGLSL = /* glsl */ `
   uniform float waterTime;
   const vec3 FLOW_DIRECTION = ${vec3(FLOW_DIRECTION)};
   float currentStrength(vec3 p, float t) {
-    float gust = sin(t * 0.11 - p.x * 0.34 - p.z * 0.19);
-    float eddy = 0.5 * sin(t * 0.47 + p.x * 1.7 + p.z * 1.1) + 0.5 * sin(t * 0.31 - p.z * 2.3 + p.x * 0.6);
-    return 0.62 + 0.30 * gust + 0.12 * eddy;
+    return ${number(CURRENT.mean)}
+      ${CURRENT.waves.map((w) => `+ ${number(w.amplitude)} * sin(${wavePhase(w)})`).join("\n      ")};
+  }
+  // Time integral of the strength: how far, in strength-seconds, the water at p has
+  // carried anything riding it since t = 0.
+  float currentTravel(vec3 p, float t) {
+    return ${number(CURRENT.mean)} * t
+      ${CURRENT.waves.map((w) => `- ${number(w.amplitude / w.rate)} * cos(${wavePhase(w)})`).join("\n      ")};
   }
 `;
+
+// The same field on the CPU: the water velocity at p, written into `out`.
+export function currentVelocity(p, t, out) {
+  let strength = CURRENT.mean;
+  for (const { amplitude, rate, kx, kz } of CURRENT.waves)
+    strength += amplitude * Math.sin(t * rate + p.x * kx + p.z * kz);
+  return out.copy(FLOW_DIRECTION).multiplyScalar(strength * CURRENT_SPEED);
+}
 
 // Light entering through a gently rippled surface is focused and defocused below it, and
 // the water column absorbs red faster than green. The surface is a few short wave trains

@@ -24,22 +24,18 @@ To use another port with Node:
 PORT=8081 npm start
 ```
 
-## Controls
+## Experience
 
-- Move the pointer through the open water. Nearby fish can dart away, brake, and settle.
+The aquarium has no visible text, buttons, or panels. A quiet fade reveals the scene once it is ready. Move the pointer through the water to interact with nearby fish.
+
 - **Space** pauses and resumes. A reduced-motion system preference starts the scene paused.
-- **I** opens inspection controls; **F** toggles fullscreen.
-- **Inspect → View** offers three closer views from the front of the tank.
-- **Resolution** changes the number of rendered pixels. The default is 1.5 times the preview's CSS dimensions.
-- **Measure 15 seconds** reports frame rate, frame-time tail, GPU time per frame where the browser exposes timer queries, resolution, browser, and GPU.
-- The behavior readout counts fish holding station, relocating, darting, braking, and investigating the rocks, wood, or grass.
-- **Save image** downloads the current rendered frame.
+- **F** toggles fullscreen.
 
-The composition retains the reference aspect ratio. Controls fade when the pointer leaves the preview. There is no sound or camera orbit.
+The composition retains the reference aspect ratio and renders at 1.5 times the canvas dimensions. There is no sound or camera orbit. Startup errors are reported in the browser console.
 
 ## Files
 
-- `src/main.js`: camera, lighting, water-depth postprocessing, input, and preview controls.
+- `src/main.js`: camera, lighting, water-depth postprocessing, input, and animation.
 - `src/water.js`: the current field, surface-refraction light focusing and depth absorption, and the hook that lights every material through them.
 - `src/environment.js`: terrain and the sand channel, the stone and driftwood layout, sediment, moss and algae growth with instanced fronds, bubbles and drifting debris, and the landmarks fish investigate.
 - `src/foliage.js`: the strand model that bends leaves in the current, the submerged leaf material with thin-leaf transmission, and the blade and stem generators.

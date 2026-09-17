@@ -218,6 +218,14 @@ export function createPlants(scene) {
   ])
     fallenLeaf(batch, x, z, length, heading);
   plantStems(batch);
+  // Young runners taper the left bed into the fine stems, with gaps between shoots.
+  for (const [x, z, height, leaves] of [
+    [-10.15, -3.15, 3.2, 3],
+    [-9.55, -3.55, 4.5, 4],
+    [-9.05, -2.85, 5.3, 4],
+    [-8.55, -3.3, 6.1, 5],
+  ])
+    ribbonRosette(batch, x, z, height, leaves);
   const mesh = new THREE.Mesh(batch.geometry(), foliageMaterial());
   mesh.customDepthMaterial = foliageDepth();
   mesh.castShadow = true;

@@ -27,69 +27,7 @@
         aria-label="A planted freshwater aquarium. Move the pointer gently near the fish to interact."
         tabindex="0"
       ></canvas>
-      <div id="loading" role="status">
-        <span>Freshwater</span><small>Preparing the aquascape…</small>
-      </div>
-      <div id="error" hidden role="alert"></div>
-      <div id="controls">
-        <div class="caption">
-          <span>Freshwater</span><small>A living aquascape</small>
-        </div>
-        <div class="actions">
-          <button
-            id="pause"
-            aria-label="Pause aquarium"
-            title="Pause / resume (Space)"
-          >
-            Pause
-          </button>
-          <button
-            id="inspect"
-            aria-pressed="false"
-            title="Show rendering and behavior information (I)"
-          >
-            Inspect
-          </button>
-          <button id="fullscreen" title="Fullscreen (F)">Fullscreen</button>
-        </div>
-      </div>
-      <section id="inspection" hidden aria-label="Aquarium inspection">
-        <div class="inspection-head">
-          <strong>Inspection</strong
-          ><button id="close-inspection" aria-label="Close inspection">
-            ×
-          </button>
-        </div>
-        <p id="performance">Measuring…</p>
-        <p id="behavior"></p>
-        <label
-          >View
-          <select id="view">
-            <option value="full">Complete aquarium</option>
-            <option value="wood">Wood & moss</option>
-            <option value="plant">Leaves & substrate</option>
-            <option value="fish">Open water</option>
-          </select></label
-        >
-        <label
-          >Resolution
-          <select id="resolution">
-            <option value="1">Native pixels</option>
-            <option value="1.5" selected>Fine · 1.5×</option>
-            <option value="2">Ultra · 2×</option>
-          </select></label
-        >
-        <div class="inspection-actions">
-          <button id="measure">Measure 15 seconds</button
-          ><button id="capture">Save image</button>
-        </div>
-        <p id="measurement" aria-live="polite"></p>
-        <small
-          >Move your pointer through the water. Space pauses; I hides this
-          panel. All views keep the camera in front of the tank.</small
-        >
-      </section>
-      <span id="hint">Move gently near the fish</span>
+      <div id="loading" aria-hidden="true"></div>
     </main>
     <script type="module" src="src/main.js"></script>
   </body>

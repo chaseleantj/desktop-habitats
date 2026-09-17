@@ -1,7 +1,5 @@
 :root {
   color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #e7eee9;
   background: #080e0c;
 }
 * {
@@ -33,184 +31,18 @@ canvas {
   height: min(100%, 52.113vw);
   transform: translateY(-50%);
 }
-button,
-select {
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  background: #17251fd9;
-  border: 1px solid #ffffff23;
-  border-radius: 4px;
-  padding: 8px 12px;
-  cursor: pointer;
-}
-button:hover,
-select:hover {
-  background: #314138;
-}
-button:focus-visible,
-select:focus-visible {
-  outline: 2px solid #d0dcb9;
-  outline-offset: 3px;
-}
 [hidden] {
   display: none !important;
-}
-#controls {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 38px 24px 18px;
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  background: linear-gradient(transparent, #040a086e);
-  opacity: 0;
-  transition: opacity 0.6s;
-  pointer-events: none;
-}
-main:hover #controls,
-main:focus-within #controls,
-body.controls-visible #controls {
-  opacity: 1;
-}
-#controls button {
-  pointer-events: auto;
-}
-.caption {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  text-shadow: 0 1px 3px #000;
-}
-.caption span {
-  font-family: Georgia, serif;
-  font-size: 21px;
-  letter-spacing: 0.2px;
-}
-.caption small {
-  color: #e0e8dbc2;
-  font-size: 11px;
-}
-.actions {
-  display: flex;
-  gap: 6px;
 }
 #loading {
   position: absolute;
   inset: 0;
   background: #080e0c;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  gap: 12px;
+  pointer-events: none;
   transition: opacity 0.8s;
 }
-#loading span {
-  font:
-    32px Georgia,
-    serif;
-}
-#loading small {
-  color: #9ba99e;
-  font-size: 12px;
-}
-#error {
-  position: absolute;
-  inset: 25% 20%;
-  padding: 32px;
-  background: #17251f;
-  line-height: 1.6;
-}
-#hint {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 24px;
-  text-align: center;
-  pointer-events: none;
-  font-size: 11px;
-  letter-spacing: 0.25px;
-  color: #e9efe1c0;
-  text-shadow: 0 1px 4px #000;
-  transition: opacity 1s;
-}
-#inspection {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 310px;
-  background: #0d1712ee;
-  padding: 16px;
-  border: 1px solid #ffffff24;
-  border-radius: 5px;
-  box-shadow: 0 10px 35px #0004;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.inspection-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.inspection-head button {
-  background: transparent;
-  border: none;
-  padding: 0 5px;
-  font-size: 20px;
-}
-#inspection p {
-  margin: 10px 0;
-  font-variant-numeric: tabular-nums;
-  color: #bccac0;
-  white-space: pre-line;
-}
-#inspection label {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 10px 0;
-}
-#inspection select {
-  width: 177px;
-}
-#inspection small {
-  display: block;
-  font-size: 11px;
-  color: #91a095;
-}
-.inspection-actions {
-  display: flex;
-  gap: 8px;
-  margin: 14px 0;
-}
-@media (max-width: 650px) {
-  #controls {
-    padding: 24px 12px 10px;
-  }
-  .caption small {
-    display: none;
-  }
-  .caption span {
-    font-size: 17px;
-  }
-  button {
-    padding: 8px;
-  }
-  #inspection {
-    top: 8px;
-    right: 8px;
-    max-height: calc(100% - 16px);
-    overflow: auto;
-    width: 275px;
-  }
-  #hint {
-    display: none;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
+  #loading {
+    transition: none;
   }
 }

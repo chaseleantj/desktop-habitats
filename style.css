@@ -25,6 +25,9 @@ canvas {
   height: 100%;
   outline: none;
 }
+[data-fit="fill"] main {
+  height: 100vh;
+}
 #aquarium:fullscreen canvas {
   position: absolute;
   top: 50%;

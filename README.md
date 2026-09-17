@@ -1,6 +1,6 @@
 # Freshwater aquarium
 
-A separate interactive 3D aquarium preview, inspired by the supplied aquascape. The scene uses WebGL2, GLSL materials, and a persistent fish simulation. One water model drives the whole tank: a slow current that bends the plants and carries debris, and overhead light that is focused by the rippled surface and absorbed with depth. All rendering code, textures, and dependencies are included. It makes no network requests outside its local server and does not change desktop backgrounds or wallpaper settings.
+A separate interactive 3D aquarium preview, inspired by the supplied aquascape. The scene uses WebGL2, GLSL materials, and a persistent fish simulation. One water model drives the whole tank: a slow current that bends the plants and carries debris, and overhead light that is focused by the rippled surface and absorbed with depth. All rendering code, textures, and dependencies are included. It makes no network requests outside its local server. It can also be installed as a live desktop wallpaper on macOS, which is the one thing here that changes a system setting.
 
 ## Open the preview
 
@@ -31,10 +31,31 @@ The aquarium has no visible text, buttons, or panels. A quiet fade reveals the s
 - **Space** pauses and resumes. A reduced-motion system preference starts the scene paused.
 - **F** toggles fullscreen.
 
-The composition retains the reference aspect ratio and renders at 1.5 times the canvas dimensions. There is no sound or camera orbit. Startup errors are reported in the browser console.
+The composition retains the reference aspect ratio and renders at 1.5 times the canvas dimensions, unless a host page asks for a different number of pixels, as the wallpaper does. There is no sound or camera orbit. Startup errors are reported in the browser console.
+
+## Desktop wallpaper
+
+On macOS the scene can run behind the desktop icons:
+
+```sh
+npm run wallpaper
+```
+
+This builds a small agent, installs it as `~/Applications/Aquarium Wallpaper.app` with its own copy of the scene, starts it, and sets it to start again at login. The desktop picture is set to a frame of the scene, which is what login and Mission Control show. To remove all of it:
+
+```sh
+npm run unwallpaper
+```
+
+Files and folders stay on top of the water and behave normally: the window sits at the desktop window level, below the icons, and never takes a mouse event. The fish still see the cursor, because the agent reads its position and passes it to the page rather than capturing it.
+
+The frame rate follows what is worth drawing. A scene this size costs the graphics processor ten to twenty watts at full rate, so it stops entirely behind a full screen of work, a locked screen or a sleeping display, slows to 20 frames a second when windows leave only part of it showing, and runs at 60 on mains power or 30 on battery when the desktop is in plain sight. It renders one pixel per screen pixel. `kill -USR1` on the agent writes what it is drawing to `/tmp/aquarium-wallpaper.png`; page errors and rate changes go to `/tmp/aquarium-wallpaper.log`.
 
 ## Files
 
+- `wallpaper.html`: the page the wallpaper runs, which fills the screen instead of keeping the reference aspect ratio.
+- `wallpaper/Wallpaper.swift`: the macOS agent, its desktop-level window, cursor forwarding and frame-rate policy.
+- `wallpaper/install.sh`, `wallpaper/uninstall.sh`: build, install and removal.
 - `src/main.js`: camera, lighting, water-depth postprocessing, input, and animation.
 - `src/water.js`: the current field, surface-refraction light focusing and depth absorption, and the hook that lights every material through them.
 - `src/environment.js`: terrain and the sand channel, the stone and driftwood layout, sediment, moss and algae growth with instanced fronds, bubbles and drifting debris, and the landmarks fish investigate.

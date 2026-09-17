@@ -8,7 +8,16 @@ const canvas = document.querySelector("#scene");
 const aquarium = document.querySelector("#aquarium");
 const loading = document.querySelector("#loading");
 let paused = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const resolution = 1.5;
+// The preview renders at 1.5 times its canvas. A host page can ask for a different
+// number of pixels; the wallpaper matches the screen exactly.
+const resolution = Number(document.documentElement.dataset.resolution) || 1.5;
+
+// The wallpaper host sets the frame rate: lower on battery, and none at all while the
+// desktop is covered, when drawing the scene would only cost power.
+let interval = 0;
+window.aquariumRate = (fps) => {
+  interval = fps > 0 ? 1000 / fps - 1.5 : Infinity;
+};
 
 function fail(error) {
   console.error(error);
@@ -228,9 +237,13 @@ async function start() {
   let ready = false;
   function frame(now) {
     requestAnimationFrame(frame);
+    if (document.hidden) {
+      last = now;
+      return;
+    }
     const elapsed = now - last;
+    if (elapsed < interval) return;
     last = now;
-    if (document.hidden) return;
     const dt = Math.min(0.05, elapsed / 1000);
     if (!paused) {
       time += dt;

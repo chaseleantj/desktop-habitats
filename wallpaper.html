@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-fit="fill">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080e0c" />
+    <meta
+      name="description"
+      content="The living freshwater aquascape, framed to fill a screen as a desktop wallpaper."
+    />
+    <title>Freshwater • Aquarium wallpaper</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+    <script>
+      // One rendered pixel per screen pixel, and never below the preview's sampling.
+      document.documentElement.dataset.resolution = String(
+        Math.min(2, Math.max(1.5, window.devicePixelRatio || 1)),
+      );
+    </script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js",
+          "three/addons/": "./vendor/addons/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main id="aquarium" aria-label="Interactive freshwater aquarium">
+      <canvas id="scene" tabindex="-1"></canvas>
+      <div id="loading" aria-hidden="true"></div>
+    </main>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

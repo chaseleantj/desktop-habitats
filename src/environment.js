@@ -43,6 +43,8 @@ const MOSS_COLONIES = [
 // at the trunk's base, and small stones trailing off along the sand. `lean` tips a stone
 // about the tank's front axis; the two big stones lean in toward the wood between them,
 // and the rest lean toward the channel, the way stones settle in a flow.
+// Order matters: the epiphytes in `broadleaf.js` hold onto a stone by its index here. Moss
+// colonies, fern tufts and sediment are placed by hand, so move a stone's growth with it.
 export const ROCKS = [
   { x: 4.7, z: 0.35, rx: 1.7, ry: 1.5, rz: 1.15, lean: 0.15 },
   { x: -4.7, z: -0.35, rx: 1.35, ry: 1.45, rz: 1.0, lean: -0.12 },

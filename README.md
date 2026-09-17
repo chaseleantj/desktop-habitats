@@ -4,7 +4,7 @@ A separate interactive 3D aquarium preview, inspired by the supplied aquascape. 
 
 ## Open the preview
 
-Unzip the package, open a terminal in the resulting folder, and run either:
+Open a terminal in this folder and run either:
 
 ```sh
 npm start
@@ -69,8 +69,6 @@ The frame rate follows what is worth drawing. A scene this size costs the graphi
 - `src/fish.js`: spine bending and swimming deformation, and individual behavior.
 - `vendor/`: pinned Three.js 0.180.0 runtime and its license.
 - `assets/`: bundled surface maps and the supplied visual reference.
-- `review/atmosphere-round-1/`: atmosphere captures, timing samples and the focused independent review.
-- `review/composition-round-1/`: composition report, generated references, and final captures included in the package. Earlier requests, reviews and intermediate captures remain in the local checkout.
 
 The renderer uses PBR materials, a broad overhead reflection environment, shadow mapping, sampled depth occlusion, and supersampling with multisample antialiasing. Leaves bend and flutter in the shared current according to their compliance and length, transmit light through thin tissue per shadowed light, and let part of the scene through by multisample coverage. Fish swim in short bouts, then coast with quiet tails. A travelling bend runs down each body into a flexible tail fin; the same swimming effort produces the forward thrust. Individuals take long routes through the tank, including behind the grass, with brief rests and visits to the hardscape. They anticipate crossing neighbours and turn smoothly. Particles are lit by the same shadow map as the scene. This is raster rendering; it does not calculate full path-traced light transport.
 
@@ -85,6 +83,6 @@ npm run check
 npm test
 ```
 
-The behavior check simulates two minutes of tank motion, checks individual coverage of width, depth and height, quiet-tail coasting, calm tail-beat frequency, bounds and spacing, and exercises local disturbance and recovery. It also verifies all five states, including visits to landmarks, without synchronization. It does not prove anatomical or photographic realism. In the development checkout, `review/swimming-round-1/` holds the independent motion review and `review/` holds earlier scene reviews.
+The behavior check simulates two minutes of tank motion, checks individual coverage of width, depth and height, quiet-tail coasting, calm tail-beat frequency, bounds and spacing, and exercises local disturbance and recovery. It also verifies all five states, including visits to landmarks, without synchronization. It does not prove anatomical or photographic realism.
 
 Material and library attribution is in `CREDITS.md`.

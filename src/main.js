@@ -37,7 +37,9 @@ async function start() {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#050f0c");
-  scene.fog = new THREE.FogExp2("#0a1c15", 0.031);
+  // A faint green-blue veil builds along the viewing ray, leaving the foreground clear
+  // while the back planting loses a little contrast through the water.
+  scene.fog = new THREE.FogExp2("#16312a", 0.034);
   const camera = new THREE.PerspectiveCamera(25.8, 1420 / 740, 0.2, 65);
   camera.position.set(0, 4.65, 20.5);
   camera.lookAt(0, 4.15, 0);

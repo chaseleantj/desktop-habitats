@@ -809,7 +809,7 @@ export async function createEnvironment(scene) {
 // oxygen bubbles pearling off the plants. Both are lit only where the key light reaches
 // them, so they sparkle in the light and vanish in shade.
 export function createParticles(scene, { thickets }) {
-  const debris = 260,
+  const debris = 780,
     bubbles = 120,
     count = debris + bubbles;
   const positions = new Float32Array(count * 3),
@@ -833,7 +833,8 @@ export function createParticles(scene, { thickets }) {
       sizes[i] = range(0.03, 0.075);
     } else {
       positions.set([range(-9, 9), range(0.4, 9.6), range(-5.4, 3.4)], i * 3);
-      sizes[i] = range(0.005, 0.03) * (random() < 0.15 ? 1.8 : 1);
+      // Mostly fine suspended matter, with an occasional larger fragment catching light.
+      sizes[i] = 0.005 + 0.038 * random() ** 2.4;
     }
     seeds[i] = random();
     kinds[i] = bubble ? 1 : 0;
@@ -908,7 +909,7 @@ export function createParticles(scene, { thickets }) {
             lit = shadowCoord.z - 0.0015 <= occluder ? 1.0 : 0.0;
           }
         #endif
-        vec3 water = waterLight(p, t);
+        vec3 water = waterLight(p, t) * waterLightDrift(p, t);
         vLight = (0.08 + 0.92 * lit) * water.g * tumble;
         vGlint = vec2(-0.16, 0.2);
         vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
@@ -939,7 +940,7 @@ export function createParticles(scene, { thickets }) {
           // A matte fleck: bright in the beam, invisible in shade; some are darker plant
           // fragments, some pale mulm.
           color = vec3(0.62, 0.64, 0.5) * vLight * (1.2 + 2.4 * vFade);
-          alpha = (1.0 - smoothstep(0.35, 1.0, r)) * vFade;
+          alpha = (1.0 - smoothstep(0.15, 1.0, r)) * vFade * 0.72;
         }
         gl_FragColor = vec4(color, alpha);
         #include <fog_fragment>

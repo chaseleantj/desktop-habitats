@@ -50,11 +50,14 @@ The composition retains the reference aspect ratio. Controls fade when the point
 - `src/fish.js`: spine bending and swimming deformation, and individual behavior.
 - `vendor/`: pinned Three.js 0.180.0 runtime and its license.
 - `assets/`: bundled surface maps and the supplied visual reference.
+- `review/atmosphere-round-1/`: atmosphere captures, timing samples and the focused independent review.
 - `review/composition-round-1/`: composition report, generated references, and final captures included in the package. Earlier requests, reviews and intermediate captures remain in the local checkout.
 
 The renderer uses PBR materials, a broad overhead reflection environment, shadow mapping, sampled depth occlusion, and supersampling with multisample antialiasing. Leaves bend and flutter in the shared current according to their compliance and length, transmit light through thin tissue per shadowed light, and let part of the scene through by multisample coverage. Fish swim in short bouts, then coast with quiet tails. A travelling bend runs down each body into a flexible tail fin; the same swimming effort produces the forward thrust. Individuals take long routes through the tank, including behind the grass, with brief rests and visits to the hardscape. They anticipate crossing neighbours and turn smoothly. Particles are lit by the same shadow map as the scene. This is raster rendering; it does not calculate full path-traced light transport.
 
 The fish's burst-and-coast pattern is informed by [experiments on small tetras](https://pmc.ncbi.nlm.nih.gov/articles/PMC7809443/) and [observations of freely swimming tetra pairs](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005933). Animation timing is tuned for a calm aquarium; this is not a species-calibrated hydrodynamic simulation.
+
+The atmosphere adds fine suspended debris, a faint green-blue tint that strengthens with viewing depth, and broad lighting variations over roughly 43- and 86-second cycles. These use the existing depth fog and shared water-light shader, so plants, fish and particles stay under the same lighting. All motion, including the light drift, stops when paused.
 
 ## Checks
 

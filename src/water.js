@@ -56,6 +56,12 @@ export function currentVelocity(p, t, out) {
 // raised by the filter return; the focusing factor is the divergence of the refracted rays
 // at the fragment's depth, with a small refraction angle so the pattern stays soft.
 export const surfaceLightGLSL = /* glsl */ `
+  // Broad, slow changes are smooth enough to evaluate at vertices and interpolate.
+  float waterLightDrift(vec3 p, float t) {
+    return 1.0
+      + 0.024 * sin(t * 0.145 + p.x * 0.23 + p.z * 0.12)
+      + 0.012 * sin(t * 0.073 - p.x * 0.16 + p.z * 0.21 + 1.7);
+  }
   vec3 waterLight(vec3 p, float t) {
     float depth = clamp(${SURFACE_Y.toFixed(1)} - p.y, 0.5, 10.0);
     float laplacian =
@@ -75,10 +81,18 @@ export const surfaceLightGLSL = /* glsl */ `
 export function waterLitShader(shader, { perLight = "" } = {}) {
   if (shader.fragmentShader.includes("RE_Direct_Water")) return shader;
   shader.uniforms.waterTime = waterTime;
+  // A separate vertex uniform name avoids redeclaring the foliage's current clock.
+  shader.uniforms.waterLightTime = waterTime;
   shader.vertexShader = shader.vertexShader
     .replace(
       "#include <common>",
-      "#include <common>\nvarying vec3 vWaterPosition;",
+      /* glsl */ `
+      #include <common>
+      uniform float waterLightTime;
+      varying vec3 vWaterPosition;
+      varying float vWaterDrift;
+      ${surfaceLightGLSL}
+    `,
     )
     .replace(
       "#include <worldpos_vertex>",
@@ -89,6 +103,7 @@ export function waterLitShader(shader, { perLight = "" } = {}) {
         waterWorld = instanceMatrix * waterWorld;
       #endif
       vWaterPosition = (modelMatrix * waterWorld).xyz;
+      vWaterDrift = waterLightDrift(vWaterPosition, waterLightTime);
     `,
     );
   shader.fragmentShader = shader.fragmentShader
@@ -98,6 +113,7 @@ export function waterLitShader(shader, { perLight = "" } = {}) {
       #include <common>
       uniform float waterTime;
       varying vec3 vWaterPosition;
+      varying float vWaterDrift;
       vec3 gWaterLight = vec3(1.0);
       ${surfaceLightGLSL}
     `,
@@ -119,7 +135,7 @@ export function waterLitShader(shader, { perLight = "" } = {}) {
     .replace(
       "#include <lights_fragment_begin>",
       /* glsl */ `
-      gWaterLight = waterLight(vWaterPosition, waterTime);
+      gWaterLight = waterLight(vWaterPosition, waterTime) * vWaterDrift;
       #include <lights_fragment_begin>
     `,
     );

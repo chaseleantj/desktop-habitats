@@ -52,7 +52,9 @@ The composition retains the reference aspect ratio. Controls fade when the point
 - `assets/`: bundled surface maps and the supplied visual reference.
 - `review/`: original request, independent critic report and captures, revision notes, and measured verification.
 
-The renderer uses PBR materials, a broad overhead reflection environment, shadow mapping, sampled depth occlusion, and supersampling with multisample antialiasing. Leaves bend and flutter in the shared current according to their compliance and length, transmit light through thin tissue per shadowed light, and let part of the scene through by multisample coverage. Fish bodies follow a bending spine whose curvature comes from their turning rate and a propulsive wave; their behavior mixes station keeping, twitches, group relocation, and curiosity-driven visits to the hardscape and grass. Particles are lit by the same shadow map as the scene. This is raster rendering; it does not calculate full path-traced light transport.
+The renderer uses PBR materials, a broad overhead reflection environment, shadow mapping, sampled depth occlusion, and supersampling with multisample antialiasing. Leaves bend and flutter in the shared current according to their compliance and length, transmit light through thin tissue per shadowed light, and let part of the scene through by multisample coverage. Fish swim in short bouts, then coast with quiet tails. A travelling bend runs down each body into a flexible tail fin; the same swimming effort produces the forward thrust. Individuals take long routes through the tank, including behind the grass, with brief rests and visits to the hardscape. They anticipate crossing neighbours and turn smoothly. Particles are lit by the same shadow map as the scene. This is raster rendering; it does not calculate full path-traced light transport.
+
+The fish's burst-and-coast pattern is informed by [experiments on small tetras](https://pmc.ncbi.nlm.nih.gov/articles/PMC7809443/) and [observations of freely swimming tetra pairs](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005933). Animation timing is tuned for a calm aquarium; this is not a species-calibrated hydrodynamic simulation.
 
 ## Checks
 
@@ -61,6 +63,6 @@ npm run check
 npm test
 ```
 
-The behavior check simulates two minutes of tank motion, checks bounds and spacing, exercises local disturbance and recovery, and verifies that individuals use all five states, including visits to landmarks, without synchronization. It does not prove anatomical or photographic realism. See `review/verification.md` for the browser inspection and visual review outcome.
+The behavior check simulates two minutes of tank motion, checks individual coverage of width, depth and height, quiet-tail coasting, calm tail-beat frequency, bounds and spacing, and exercises local disturbance and recovery. It also verifies all five states, including visits to landmarks, without synchronization. It does not prove anatomical or photographic realism. See `review/swimming-round-1/` for the latest independent motion review; earlier scene reviews are also in `review/`.
 
 Material and library attribution is in `CREDITS.md`.

@@ -17,33 +17,51 @@ export const BOUNDS = {
   minZ: -4.7,
   maxZ: 3.2,
 };
-// The lit open water in front of the wood, where the shoal spends most of its time.
-const OPEN = { minX: -6.4, maxX: 6.4, minY: 2.2, maxY: 6.4, minZ: 0.1, maxZ: 3.0 };
+// Open-water routes include the space above and alongside the planting.
+const OPEN = { minX: -7.5, maxX: 7.5, minY: 1.8, maxY: 7.4, minZ: -1.4, maxZ: 2.8 };
 const GROUND_CLEARANCE = 0.55;
 const MAX_EXPLORERS = 7;
 const UP = new THREE.Vector3(0, 1, 0);
 const FORWARD = new THREE.Vector3(1, 0, 0);
 const TAU = Math.PI * 2;
 
-// Swimming is thrust against drag, with the mass taken as one so thrust reads as
-// acceleration. The viscous term brings a drifting fish to rest; the pressure term caps a
-// burst, so a C-start's peak thrust saturates near seven body lengths a second, as measured
-// in small fish. Cruise is a relaxed three quarters of a body length a second. Pectoral
-// sculling moves a fish slowly in any direction; anything faster comes from the tail and
-// only drives along the heading.
+// Acceleration is relative to the water. Low axial drag preserves momentum between
+// strokes; stronger cross-flow drag keeps the body following its swimming direction.
 const SWIM = {
-  linearDrag: 0.6,
-  quadraticDrag: 2.5,
-  cruise: 0.8,
+  linearDrag: 0.38,
+  quadraticDrag: 0.85,
+  lateralDrag: 3.2,
+  cruise: 1.2,
   scull: 0.35,
+  avoidanceScull: 0.9,
   brake: 0.8,
   response: 0.5,
-  thrustLimit: { hover: 1.4, settle: 1.4, inspect: 1.8, travel: 3.0, escape: 0 },
+  thrustLimit: { hover: 1.2, settle: 0, inspect: 1.2, travel: 6.0, escape: 0 },
 };
-// A cruising fish turns on about half a body length of radius; a hovering one pivots
-// slowly on its fins with a modest sweep of the tail, so the body's curvature is read
-// against a floor speed. Pitch stays shallow: tetras climb and dive at a slant.
-const TURN = { curvature: 3.5, floorRate: 0.9, hoverRate: 0.5, floorSpeed: 0.5, pitch: 0.35 };
+// Tetras alternate a few propulsive strokes with a straight-bodied coast. The same
+// envelope drives both thrust and body motion. Timing is tuned for this calm tank;
+// the behavioural reference is Li et al. 2021, doi:10.1038/s42003-020-01521-z.
+const GAIT = {
+  frequency: 3.2,
+  coast: [0.32, 0.65],
+  restartSpeed: 0.86,
+  minimumThrust: 0.2,
+  strokeGain: 2.6,
+  waveAngle: 0.78,
+};
+// Turn rate eases into a curve; the curvature floor prevents a resting fish folding
+// in half when it reorients on its fins. Climbs and dives stay shallow.
+const TURN = {
+  curvature: 2.4,
+  floorRate: 0.65,
+  maximumRate: 1.8,
+  speedRate: 0.8,
+  steeringGain: 2.2,
+  hoverRate: 0.45,
+  floorSpeed: 0.65,
+  pitch: 0.45,
+  response: 4,
+};
 // Neighbours are seen out to three body lengths except in the cone behind, and fast
 // movement close by is felt through the lateral line from any side.
 const SENSES = { visual: 2.6, blindCosine: -0.6, lateralLine: 0.9 };
@@ -53,7 +71,7 @@ const SENSES = { visual: 2.6, blindCosine: -0.6, lateralLine: 0.9 };
 // feels this much pull leaves with the others, and a fresh departure nearby recruits it
 // at this rate per second.
 const SHOAL = {
-  spacing: 0.75,
+  spacing: 1.05,
   crowded: 0.55,
   separation: 2.0,
   alignment: 0.5,
@@ -63,33 +81,31 @@ const SHOAL = {
   recruitRange: 1.4,
   recruitWindow: 1.2,
   recruitRate: 0.15,
+  lookAhead: 1.1,
 };
-// Station keeping: a hovering fish trims toward its station, which slowly becomes wherever
-// it has drifted to, and flicks its tail on a Poisson clock, turning a few tens of degrees
-// each time and mostly the same way as last time, so it slaloms rather than jitters. Every
-// forty seconds or so it leaves for somewhere else.
+// Station keeping is a brief pause between excursions, with occasional fin-assisted turns.
 const HOVER = {
   trim: 0.6,
   trimSpeed: 0.3,
   drift: 10,
-  twitchInterval: 3.0,
-  excursionInterval: 40,
+  twitchInterval: 7.0,
+  excursionInterval: 4.5,
   flip: 0.3,
-  turn: [0.17, 1.3],
-  settle: 0.9,
+  turn: [0.17, 0.65],
+  settle: 1.2,
 };
 // A twitch and a C-start are one movement at two sizes: the body bends into a C toward the
 // new heading while the head swings, then the tail sweeps back and drives the fish forward.
 // Stage one of a C-start lasts a few frames; stage two and the burst that follows carry a
 // startled fish several body lengths before it coasts to a stop and will not fire again.
-const TWITCH = { curvature: 2.4, thrust: 7, stage1: 0.07, stage2: 0.09 };
+const TWITCH = { curvature: 1.5, thrust: 4, stage1: 0.18, stage2: 0.24 };
 const CSTART = {
   curvature: 4.2,
-  thrust: 110,
+  thrust: 85,
   stage1: 0.06,
   stage2: 0.1,
   burst: [0.25, 0.45],
-  burstThrust: 55,
+  burstThrust: 30,
   refractory: 1.6,
 };
 // An approaching object is read by how fast it looms: closing speed over distance. A slow
@@ -110,14 +126,12 @@ const THREAT = {
 // see the threat itself.
 const CONTAGION = { range: 2.2, chance: 0.9, latency: [0.04, 0.13], spread: 0.5 };
 
-// The body is a flexible beam behind a nearly rigid head. Its spine follows a planar
-// curve whose curvature is the sum of a turning bend, set by how sharply the fish is
-// turning for its speed, and a propulsive wave that travels toward the tail and grows
-// there. Positions are found by integrating the curve; cross-sections stay rigid and
-// rotate with it, so the tail fin swings with the body instead of sliding sideways.
+// Integrate the spine's tangent, preserving body length. A travelling angular wave
+// builds along the trunk and peduncle; the head counter-moves only slightly.
 const SWIM_GLSL = /* glsl */ `
   // Part ids come from fish-anatomy.js: 4 and 5 are the pectorals, 1-3, 6 and 12 the other fins.
-  attribute vec4 aSwim; // x: wave phase, y: wave curvature, z: turning curvature, w: pectoral brake
+  attribute vec4 aSwim; // x: wave phase, y: wave angle, z: turning curvature, w: pectoral brake
+  attribute float aFinPhase;
   attribute float aPart;
   attribute float aFinProgress;
   varying vec3 vSkinPoint;
@@ -125,40 +139,41 @@ const SWIM_GLSL = /* glsl */ `
   varying float vFishPart;
   const float PIVOT = 0.12;
   vec3 gSwimPosition;
-  float spineCurvature(float s) {
-    if (s < 0.0) return 0.25 * aSwim.z;
+  float spineAngle(float s) {
     float along = clamp(s / 0.57, 0.0, 1.0);
-    return aSwim.z + aSwim.y * pow(along, 1.5) * sin(aSwim.x - s * 7.5);
+    return aSwim.z * s * (s < 0.0 ? 0.18 : 1.0)
+      - 0.025 * aSwim.y * sin(aSwim.x)
+      + aSwim.y * pow(along, 1.35) * sin(aSwim.x - s * 7.5);
   }
   vec3 finMotion(vec3 p) {
     if (aPart > 3.5 && aPart < 5.5) {
       float side = aPart < 4.5 ? 1.0 : -1.0;
-      float beat = sin(aSwim.x * 1.53 + side * 0.9);
+      float beat = sin(aFinPhase + side * 0.9);
       p.z += side * aFinProgress * (0.013 * beat + 0.018 * aSwim.w);
       p.x += aFinProgress * (0.008 * beat - 0.033 * aSwim.w);
-      p.y += aFinProgress * 0.008 * cos(aSwim.x * 1.53 + side * 0.9);
+      p.y += aFinProgress * 0.008 * cos(aFinPhase + side * 0.9);
+    } else if (aPart > 0.5 && aPart < 1.5) {
+      // The trailing membrane lags behind the peduncle instead of acting as a paddle.
+      p.z += aSwim.y * 0.045 * aFinProgress * aFinProgress
+        * sin(aSwim.x - (PIVOT - p.x) * 7.5 - 0.65);
     } else if ((aPart > 1.5 && aPart < 6.5) || aPart > 11.5) {
-      p.z += sin(aSwim.x - p.x * 10.0) * aFinProgress * 0.006;
+      p.z += sin(aFinPhase - p.x * 10.0) * aFinProgress * 0.004;
     }
     return p;
   }
   vec3 bendSpine(vec3 p, inout vec3 n) {
     float s = PIVOT - p.x;
-    // The head swings a little against the tail so momentum balances.
-    float theta = -0.1 * aSwim.y * sin(aSwim.x + 0.6);
+    float theta = spineAngle(s);
     vec2 spine = vec2(PIVOT, 0.0);
-    float kappa = spineCurvature(s);
+    float kappa = (spineAngle(s + 0.001) - spineAngle(s - 0.001)) / 0.002;
     if (s < 0.0) {
-      float mid = theta + 0.5 * kappa * s;
+      float mid = spineAngle(s * 0.5);
       spine += vec2(-cos(mid), sin(mid)) * s;
-      theta += kappa * s;
     } else {
-      float ds = s / 6.0;
-      for (int i = 0; i < 6; i++) {
-        float k = spineCurvature((float(i) + 0.5) * ds);
-        float mid = theta + 0.5 * k * ds;
+      float ds = s / 8.0;
+      for (int i = 0; i < 8; i++) {
+        float mid = spineAngle((float(i) + 0.5) * ds);
         spine += vec2(-cos(mid), sin(mid)) * ds;
-        theta += k * ds;
       }
     }
     float c = cos(theta), sn = sin(theta);
@@ -204,7 +219,7 @@ function applySwimming(material, withColor = true) {
     }
   };
   material.customProgramCacheKey = () =>
-    `aquarium-fish-${withColor ? "skin" : "depth"}-3`;
+    `aquarium-fish-${withColor ? "skin" : "depth"}-4`;
 }
 
 function clampToBox(position, box, margin = 0) {
@@ -250,9 +265,15 @@ export function createFishSchool(
     new Float32Array(COUNT * 4),
     4,
   );
+  const finPhaseAttribute = new THREE.InstancedBufferAttribute(
+    new Float32Array(COUNT), 1,
+  );
   swimAttribute.setUsage(THREE.DynamicDrawUsage);
+  finPhaseAttribute.setUsage(THREE.DynamicDrawUsage);
   geometry.body.setAttribute("aSwim", swimAttribute);
   geometry.fins.setAttribute("aSwim", swimAttribute);
+  geometry.body.setAttribute("aFinPhase", finPhaseAttribute);
+  geometry.fins.setAttribute("aFinPhase", finPhaseAttribute);
   const { skin: skinMaterial, fins: finMaterial } = createFishMaterials();
   const depthMaterial = new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking,
@@ -327,10 +348,14 @@ export function createFishSchool(
       mode: "hover",
       until: Infinity,
       nextTwitch: range(0.5, 4),
-      nextExcursion: range(2, 30),
+      nextExcursion: range(0.5, 5),
       departed: -Infinity,
       turnSign: random() < 0.5 ? -1 : 1,
-      effort: 0.15,
+      effort: 0,
+      stroke: null,
+      nextStroke: range(0, 0.5),
+      finPhase: range(0, TAU),
+      yawRate: 0,
       bend: 0,
       finBrake: 0.25,
       urge: 0,
@@ -352,6 +377,8 @@ export function createFishSchool(
   const lateral = new THREE.Vector3();
   const avoid = new THREE.Vector3();
   const separation = new THREE.Vector3();
+  const relativeVelocity = new THREE.Vector3();
+  const closestApproach = new THREE.Vector3();
   const centroid = new THREE.Vector3();
   const alignment = new THREE.Vector3();
   const urge = new THREE.Vector3();
@@ -388,6 +415,8 @@ export function createFishSchool(
   }
 
   function startFlick(f, angle, profile, pitch = Math.asin(f.heading.y)) {
+    f.stroke = null;
+    f.yawRate = 0;
     f.flick = { start: elapsed, yaw0: yawOf(f.heading), angle, pitch, ...profile };
     f.lastFlick = elapsed;
   }
@@ -402,6 +431,7 @@ export function createFishSchool(
 
   function settle(f) {
     f.mode = "settle";
+    f.stroke = null;
     f.until = elapsed + HOVER.settle * range(0.8, 1.3);
   }
 
@@ -428,11 +458,6 @@ export function createFishSchool(
     // start a chain of followers.
     f.departed = recruited ? -Infinity : elapsed;
     f.until = elapsed + f.position.distanceTo(goal) / (SWIM.cruise * 0.6) + 2;
-    // A large change of heading starts with a flick, as a fish turns before it goes.
-    delta.subVectors(goal, f.position);
-    const angle = wrap(yawOf(delta) - yawOf(f.heading));
-    if (!f.flick && Math.abs(angle) > 0.9)
-      startFlick(f, angle * range(0.7, 1.0), twitchProfile(angle));
   }
 
   function visit(f) {
@@ -442,20 +467,20 @@ export function createFishSchool(
     travel(f, interest.point);
   }
 
-  // Where a fish goes when it leaves its station: mostly a hop of a few body lengths within
-  // the open water, now and then into or behind a grass bed, sometimes anywhere in the tank.
+  // Destinations span the tank, including behind the grass. Reject nearby open-water
+  // targets so an excursion actually carries a fish out of its previous patch.
   function destination(f, out) {
     const r = random();
-    if (r < 0.74 || (r < 0.82 && !thickets.length)) {
-      for (let attempt = 0; attempt < 6; attempt++) {
+    if (r < 0.55 || (r < 0.75 && !thickets.length)) {
+      for (let attempt = 0; attempt < 12; attempt++) {
         out.set(
           range(OPEN.minX, OPEN.maxX),
           range(OPEN.minY, OPEN.maxY),
           range(OPEN.minZ, OPEN.maxZ),
         );
-        if (out.distanceToSquared(f.position) < 16) break;
+        if (out.distanceToSquared(f.position) > 25) break;
       }
-    } else if (r < 0.82) {
+    } else if (r < 0.75) {
       const bed = thickets[Math.floor(random() * thickets.length)];
       out.set(
         range(bed.minX + 0.5, bed.maxX - 0.5),
@@ -620,7 +645,11 @@ export function createFishSchool(
 
   function decide(f) {
     if (f.mode === "escape") settle(f);
-    else if (f.mode === "travel") f.interest ? inspect(f) : settle(f);
+    else if (f.mode === "travel") {
+      if (f.interest) inspect(f);
+      else if (random() < 0.72) leave(f);
+      else settle(f);
+    }
     else if (f.mode === "settle") hover(f);
     else if (f.mode === "inspect") {
       f.interest = null;
@@ -661,12 +690,23 @@ export function createFishSchool(
         centroid.add(other.position);
         if (other.mode === "travel" || other.mode === "escape")
           alignment.add(other.swim).sub(swim);
-        if (d < SHOAL.spacing) {
+        // Make room before paths cross, while there is still time to turn and coast.
+        relativeVelocity.subVectors(other.velocity, f.velocity);
+        const approachTime = THREE.MathUtils.clamp(
+          -delta.dot(relativeVelocity) / Math.max(relativeVelocity.lengthSq(), 0.001),
+          0,
+          SHOAL.lookAhead,
+        );
+        closestApproach.copy(delta).addScaledVector(relativeVelocity, approachTime);
+        const clearance = Math.min(d, closestApproach.length());
+        if (clearance < SHOAL.spacing) {
+          if (closestApproach.lengthSq() < 0.01) closestApproach.copy(delta);
           separation.addScaledVector(
-            delta,
-            -(SHOAL.spacing - d) / (SHOAL.spacing * Math.max(d, 0.05)),
+            closestApproach,
+            -(SHOAL.spacing - clearance) /
+              (SHOAL.spacing * Math.max(closestApproach.length(), 0.05)),
           );
-          if (d < SHOAL.crowded) crowded = true;
+          if (clearance < SHOAL.crowded) crowded = true;
         }
         if (
           other.mode === "travel" &&
@@ -722,16 +762,16 @@ export function createFishSchool(
         if (surface < buffer && distance > 0.001)
           avoid.addScaledVector(delta, ((buffer - surface) * 1.25) / distance);
       });
-      const wallDistance = 0.6;
+      const wallDistance = 1.2;
       for (const [axis, minimum, maximum] of [
         ["x", BOUNDS.minX, BOUNDS.maxX],
         ["y", BOUNDS.minY, BOUNDS.maxY],
         ["z", BOUNDS.minZ, BOUNDS.maxZ],
       ]) {
         if (position[axis] < minimum + wallDistance)
-          avoid[axis] += (minimum + wallDistance - position[axis]) * 0.45;
+          avoid[axis] += (minimum + wallDistance - position[axis]) * 1.2;
         if (position[axis] > maximum - wallDistance)
-          avoid[axis] -= (position[axis] - maximum + wallDistance) * 0.45;
+          avoid[axis] -= (position[axis] - maximum + wallDistance) * 1.2;
       }
       const floor = groundHeight(position.x, position.z) + GROUND_CLEARANCE;
       if (position.y < floor + wallDistance)
@@ -763,16 +803,19 @@ export function createFishSchool(
         }
       } else if (mode === "travel") {
         desired.subVectors(f.goal, position);
-        const remaining = desired.length();
-        if (remaining < (f.interest ? 0.45 : 0.35)) {
-          f.interest ? inspect(f) : settle(f);
-          desired.set(0, 0, 0);
-        } else {
+        let remaining = desired.length();
+        if (remaining < (f.interest ? 0.45 : 0.85)) {
+          decide(f);
+          desired.subVectors(f.goal, position);
+          remaining = desired.length();
+        }
+        if (f.mode === "travel") {
           // Slower through the grass, and easing off on the approach.
           const speed =
-            SWIM.cruise * (bed ? 0.6 : 1) * Math.min(1, 0.25 + remaining / 0.9);
+            SWIM.cruise * f.character * (bed ? 0.72 : 1) *
+            (f.interest ? Math.min(1, 0.25 + remaining / 1.2) : 1);
           desired.multiplyScalar(speed / remaining);
-        }
+        } else desired.set(0, 0, 0);
       } else desired.set(0, 0, 0);
       desired.add(avoid).sub(water);
       desired.addScaledVector(separation, SHOAL.separation);
@@ -793,14 +836,14 @@ export function createFishSchool(
           const k = t / flick.stage1;
           setHeading(heading, flick.yaw0 + flick.angle * k * k * (3 - 2 * k), flick.pitch);
           bendTarget = c * Math.sin(k * Math.PI * 0.5);
-          flickWave = 0.3;
+          flickWave = 0;
           bending = true;
         } else if (t < flick.stage1 + flick.stage2) {
           const k = (t - flick.stage1) / flick.stage2;
           setHeading(heading, flick.yaw0 + flick.angle, flick.pitch);
           bendTarget = c * (1 - 1.5 * k);
           along = flick.thrust * Math.sin(k * Math.PI);
-          flickWave = 0.3;
+          flickWave = 0;
           bending = true;
         } else if (t < flick.stage1 + flick.stage2 + flick.burst) {
           const k = (t - flick.stage1 - flick.stage2) / flick.burst;
@@ -832,9 +875,14 @@ export function createFishSchool(
               ? TURN.hoverRate
               : f.mode === "escape"
                 ? 5
-                : Math.max(TURN.floorRate, TURN.curvature * swim.length());
-          const nextYaw =
-            yaw + THREE.MathUtils.clamp(wrap(yawOf(target) - yaw), -rate * dt, rate * dt);
+                : Math.min(TURN.maximumRate, TURN.floorRate + swim.length() * TURN.speedRate);
+          const error = wrap(yawOf(target) - yaw);
+          f.yawRate = THREE.MathUtils.lerp(
+            f.yawRate,
+            THREE.MathUtils.clamp(error * TURN.steeringGain, -rate, rate),
+            1 - Math.exp(-dt * TURN.response),
+          );
+          const nextYaw = yaw + f.yawRate * dt;
           const pitch = THREE.MathUtils.lerp(
             Math.asin(heading.y),
             Math.asin(THREE.MathUtils.clamp(target.y, -TURN.pitch, TURN.pitch)),
@@ -844,9 +892,10 @@ export function createFishSchool(
         }
       }
 
-      // Thrust reaches the wanted swimming velocity and pays its drag, with the tail along
-      // the heading and the pectorals for the little that is across it.
-      let propulsion = along;
+      // Start a short bout when forward speed falls below demand, then let momentum
+      // carry the fish. Pectoral trim does not make the tail beat.
+      let drive = Math.min(1, Math.sqrt(along / SWIM.thrustLimit.travel)) * flickWave;
+      const frequency = f.mode === "escape" ? 6 : GAIT.frequency * f.character;
       if (flick) acceleration.copy(heading).multiplyScalar(along);
       else {
         acceleration.subVectors(desired, swim).multiplyScalar(1 / SWIM.response);
@@ -854,12 +903,40 @@ export function createFishSchool(
           acceleration.addScaledVector(desired, dragOf(wanted) / wanted);
         const forward = acceleration.dot(heading);
         lateral.copy(acceleration).addScaledVector(heading, -forward);
-        lateral.clampLength(0, SWIM.scull);
-        const tail = THREE.MathUtils.clamp(forward, -SWIM.brake, SWIM.thrustLimit[f.mode]);
+        lateral.clampLength(
+          0, SWIM.scull + SWIM.avoidanceScull * Math.min(1, separation.length()),
+        );
+        if (f.stroke && (elapsed >= f.stroke.end || forward < -SWIM.brake)) {
+          f.stroke = null;
+          f.nextStroke = elapsed + range(...GAIT.coast) / f.character;
+        }
+        if (
+          !f.stroke &&
+          elapsed >= f.nextStroke &&
+          forward > GAIT.minimumThrust &&
+          SWIM.thrustLimit[f.mode] > 0 &&
+          swim.dot(heading) < desired.dot(heading) * GAIT.restartSpeed
+        ) {
+          const beats = f.mode === "travel" && wanted > SWIM.cruise ? 2 : 1;
+          f.stroke = {
+            start: elapsed,
+            end: elapsed + beats / frequency,
+            thrust: Math.min(SWIM.thrustLimit[f.mode], forward * GAIT.strokeGain),
+          };
+        }
+        let tail = THREE.MathUtils.clamp(forward, -SWIM.brake, 0);
+        if (f.stroke) {
+          const progress = (elapsed - f.stroke.start) / (f.stroke.end - f.stroke.start);
+          const envelope =
+            smoothstep(0, 0.2, progress) * (1 - smoothstep(0.72, 1, progress));
+          drive = envelope * Math.sqrt(f.stroke.thrust / SWIM.thrustLimit.travel);
+          tail = f.stroke.thrust * envelope * (0.65 + 0.35 * Math.pow(Math.cos(f.phase), 2));
+        }
         acceleration.copy(lateral).addScaledVector(heading, tail);
-        propulsion = Math.max(0, tail) + 0.5 * lateral.length();
       }
       swim.addScaledVector(acceleration, dt);
+      lateral.copy(swim).addScaledVector(heading, -swim.dot(heading));
+      swim.addScaledVector(lateral, -(1 - Math.exp(-dt * SWIM.lateralDrag)));
       const speed = swim.length();
       swim.multiplyScalar(
         1 / (1 + dt * (SWIM.linearDrag + SWIM.quadraticDrag * speed)),
@@ -882,13 +959,11 @@ export function createFishSchool(
         );
         f.bend = THREE.MathUtils.lerp(f.bend, curvature, 1 - Math.exp(-dt * 6));
       } else f.bend = THREE.MathUtils.lerp(f.bend, bendTarget, 1 - Math.exp(-dt * 45));
-      // Tail beat follows thrust, not speed: a fish carried by the current or coasting
-      // after a burst does not thrash.
-      const effort = Math.min(1, Math.sqrt(propulsion * 0.17));
+      // No baseline tail oscillation: once a bout ends the body relaxes into a glide.
       f.effort = THREE.MathUtils.lerp(
         f.effort,
-        effort,
-        1 - Math.exp(-dt * (effort > f.effort ? 14 : 4)),
+        drive,
+        1 - Math.exp(-dt * 18),
       );
       const braking =
         f.mode === "settle"
@@ -899,15 +974,16 @@ export function createFishSchool(
               ? 0.25
               : 0;
       f.finBrake = THREE.MathUtils.lerp(f.finBrake, braking, 1 - Math.exp(-dt * 6));
-      const frequency = 1.2 + f.effort * 9;
-      f.phase = (f.phase + dt * TAU * frequency) % TAU;
+      if (f.stroke || flick) f.phase = (f.phase + dt * TAU * frequency) % TAU;
+      f.finPhase = (f.finPhase + dt * TAU * (2.1 + f.effort * 1.5)) % TAU;
       swimAttribute.setXYZW(
         f.id,
         f.phase,
-        (0.3 + f.effort * 2.2) * flickWave,
+        f.effort * GAIT.waveAngle,
         -f.bend,
         f.finBrake,
       );
+      finPhaseAttribute.setX(f.id, f.finPhase);
 
       axisZ.crossVectors(heading, UP).normalize();
       axisY.crossVectors(axisZ, heading).normalize();
@@ -915,7 +991,7 @@ export function createFishSchool(
       targetQuaternion.setFromRotationMatrix(basis);
       bankQuaternion.setFromAxisAngle(
         FORWARD,
-        -THREE.MathUtils.clamp(f.bend, -1.8, 1.8) * 0.16,
+        -THREE.MathUtils.clamp(f.bend, -1.8, 1.8) * 0.08,
       );
       targetQuaternion.multiply(bankQuaternion);
       f.quaternion.copy(targetQuaternion);
@@ -927,8 +1003,10 @@ export function createFishSchool(
     bodies.instanceMatrix.needsUpdate = true;
     membranes.instanceMatrix.needsUpdate = true;
     swimAttribute.needsUpdate = true;
+    finPhaseAttribute.needsUpdate = true;
   }
 
+  for (const f of fish) if (f.id % 4 !== 0) leave(f);
   update(0, 0, null);
   return {
     update,

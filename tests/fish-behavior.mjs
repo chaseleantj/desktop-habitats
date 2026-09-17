@@ -22,10 +22,10 @@ const insideTank = (p) =>
   p.z >= BOUNDS.minZ &&
   p.z <= BOUNDS.maxZ;
 
-// Two undisturbed minutes: the shoal must stay in the tank and apart, use every calm
-// state, investigate the hardscape and the grass, roam behind the grass, and face into
-// the current while holding station.
-const school = createFishSchool(new THREE.Scene(), {
+// Two undisturbed minutes: individuals cross the tank, alternate strokes with glides,
+// stay apart, investigate the planting, and face into the current during short rests.
+const scene = new THREE.Scene();
+const school = createFishSchool(scene, {
   obstacles: [{ center: new THREE.Vector3(1.35, 3.6, -0.65), radius: 0.6 }],
   landmarks: [
     { kind: "wood", point: new THREE.Vector3(1.35, 4.3, 0.1), obstacle: 0 },
@@ -37,12 +37,36 @@ let visits = 0,
   mixedStates = 0,
   hovering = 0,
   facingUpstream = 0;
+let travelling = 0,
+  gliding = 0,
+  beatingInPlace = 0,
+  peakBeatFrequency = 0;
+const swimAttribute = scene
+  .getObjectByName("Silver-blue freshwater fish")
+  .geometry.getAttribute("aSwim");
+const tracks = school.fish.map((fish) => ({
+  minimum: fish.position.clone(),
+  maximum: fish.position.clone(),
+  phase: fish.phase,
+}));
 const states = new Set();
 let minimumSpacing = Infinity;
 for (let frame = 0; frame < 7200; frame++) {
   school.update(STEP, frame * STEP, null);
   const currentStates = new Set();
   for (const fish of school.fish) {
+    const track = tracks[fish.id];
+    track.minimum.min(fish.position);
+    track.maximum.max(fish.position);
+    const tailAngle = swimAttribute.getY(fish.id);
+    const phaseStep = (fish.phase - track.phase + Math.PI * 2) % (Math.PI * 2);
+    peakBeatFrequency = Math.max(peakBeatFrequency, phaseStep / (Math.PI * 2 * STEP));
+    track.phase = fish.phase;
+    if (fish.mode === "travel") {
+      travelling++;
+      if (tailAngle < 0.03 && fish.swim.length() > 0.25) gliding++;
+    }
+    if (tailAngle > 0.15 && fish.velocity.length() < 0.12) beatingInPlace++;
     states.add(fish.mode);
     currentStates.add(fish.mode);
     if (fish.mode === "inspect") visits++;
@@ -92,6 +116,31 @@ const rheotaxis = facingUpstream / hovering;
 assert.ok(
   rheotaxis > 0.55 && rheotaxis < 0.97,
   `Most, not all, hovering fish face into the current (got ${(rheotaxis * 100).toFixed(0)}%)`,
+);
+const roaming = tracks.filter(({ minimum, maximum }) =>
+  maximum.x - minimum.x > (BOUNDS.maxX - BOUNDS.minX) * 0.45 &&
+  maximum.z - minimum.z > 3 &&
+  maximum.y - minimum.y > 1.5,
+).length;
+assert.ok(
+  roaming >= COUNT * 0.75,
+  `Most individuals must explore across width, depth and height (got ${roaming})`,
+);
+assert.ok(
+  travelling > 7200 * COUNT * 0.55,
+  "Free swimming should dominate over holding a fixed station",
+);
+assert.ok(
+  gliding / travelling > 0.25 && gliding / travelling < 0.75,
+  `Swimming must alternate visible strokes with quiet-tail glides (got ${(gliding / travelling * 100).toFixed(0)}% gliding)`,
+);
+assert.ok(
+  beatingInPlace < 7200 * COUNT * 0.04,
+  "Fish should rarely beat their tails while barely moving",
+);
+assert.ok(
+  peakBeatFrequency < 4.2,
+  `Calm swimming should not vibrate rapidly (got ${peakBeatFrequency.toFixed(2)} Hz)`,
 );
 school.dispose();
 
@@ -168,5 +217,5 @@ assert.ok(
 startledSchool.dispose();
 
 console.log(
-  `PASS: 120 simulated seconds; ${visits} inspection frames; ${behind} fish-frames behind the grass; ${(rheotaxis * 100).toFixed(0)}% of hovering fish facing upstream; minimum sampled spacing ${minimumSpacing.toFixed(3)}; slow approach gave room (${before.toFixed(2)} to ${after.toFixed(2)}) without a startle; a lunge startled ${telemetry.pointerResponses} fish directly and ${telemetry.escapes} in all, peaking at ${peakSpeed.toFixed(2)} units per second.`,
+  `PASS: 120 simulated seconds; ${roaming}/${COUNT} fish explored all three dimensions; ${(gliding / travelling * 100).toFixed(0)}% of travel was quiet-tail gliding; calm tail beats at most ${peakBeatFrequency.toFixed(2)} Hz; ${visits} inspection frames; ${behind} fish-frames behind the grass; ${(rheotaxis * 100).toFixed(0)}% of hovering fish facing upstream; minimum sampled spacing ${minimumSpacing.toFixed(3)}; slow approach gave room (${before.toFixed(2)} to ${after.toFixed(2)}) without a startle; a lunge startled ${telemetry.pointerResponses} fish directly and ${telemetry.escapes} in all, peaking at ${peakSpeed.toFixed(2)} units per second.`,
 );

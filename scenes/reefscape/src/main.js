@@ -6,7 +6,7 @@ import { createFishSchool } from './fish-model.js';
 import { createShrimp } from './shrimp.js';
 import { createParticles } from './particles.js';
 import { ReefSimulation, FIXED_STEP } from './simulation.js';
-import { waterTime } from './water.js';
+import { waterTime, shaftGLSL } from './water.js';
 
 const canvas=document.querySelector('#scene'),habitat=document.querySelector('#habitat'),loading=document.querySelector('#loading');
 const params=new URLSearchParams(location.search),isHost=document.documentElement.dataset.motion==='host';
@@ -44,15 +44,27 @@ async function start(){
     fish:{position:[-1.0,5.2,8.6],target:[-1.6,5.2,-.4],fov:19},
   };
   let view=params.get('view')||'wide';if(!views[view])view='wide';
-  function applyView(name){const v=views[name];view=name;camera.position.set(...v.position);camera.lookAt(...v.target);camera.fov=v.fov;camera.updateProjectionMatrix();}
-  applyView(view);
+  const postRight=new THREE.Vector3(),postUp=new THREE.Vector3(),postForward=new THREE.Vector3();
+  // Declared here, but only ever called once the post material below exists.
+  function syncPostCamera(){
+    camera.updateMatrixWorld();const e=camera.matrixWorld.elements,tan=Math.tan(camera.fov*Math.PI/360);
+    postRight.set(e[0],e[1],e[2]);postUp.set(e[4],e[5],e[6]);postForward.set(-e[8],-e[9],-e[10]);
+    post.uniforms.eye.value.copy(camera.position);
+    post.uniforms.rayX.value.copy(postRight).multiplyScalar(tan*camera.aspect);
+    post.uniforms.rayY.value.copy(postUp).multiplyScalar(tan);
+    post.uniforms.rayZ.value.copy(postForward);
+  }
+  function applyView(name){const v=views[name];view=name;camera.position.set(...v.position);camera.lookAt(...v.target);camera.fov=v.fov;camera.updateProjectionMatrix();syncPostCamera();}
   // The beauty pass lands in an HDR target; a short screen-space pass adds contact occlusion
   // where rock meets sand and coral meets rock, then a light vignette, before tone mapping.
   const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});target.depthTexture=new THREE.DepthTexture(1,1,THREE.UnsignedIntType);
-  const postScene=new THREE.Scene(),postCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),AO_SAMPLES=10;
-  const post=new THREE.ShaderMaterial({uniforms:{beauty:{value:target.texture},depth:{value:target.depthTexture},size:{value:new THREE.Vector2()},nearFar:{value:new THREE.Vector2(camera.near,camera.far)},aoRadiusScale:{value:1}},depthTest:false,depthWrite:false,
+  const postScene=new THREE.Scene(),postCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),AO_SAMPLES=10,VOLUME_SAMPLES=6;
+  const post=new THREE.ShaderMaterial({uniforms:{beauty:{value:target.texture},depth:{value:target.depthTexture},size:{value:new THREE.Vector2()},nearFar:{value:new THREE.Vector2(camera.near,camera.far)},aoRadiusScale:{value:1},
+    eye:{value:new THREE.Vector3()},rayX:{value:new THREE.Vector3()},rayY:{value:new THREE.Vector3()},rayZ:{value:new THREE.Vector3()},volumeTime:{value:0}},depthTest:false,depthWrite:false,
     vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
-    fragmentShader:`uniform sampler2D beauty;uniform sampler2D depth;uniform vec2 size;uniform vec2 nearFar;uniform float aoRadiusScale;varying vec2 vUv;
+    fragmentShader:`uniform sampler2D beauty;uniform sampler2D depth;uniform vec2 size;uniform vec2 nearFar;uniform float aoRadiusScale;
+      uniform vec3 eye;uniform vec3 rayX;uniform vec3 rayY;uniform vec3 rayZ;uniform float volumeTime;varying vec2 vUv;
+      ${shaftGLSL}
       float distanceAt(vec2 p){float z=texture2D(depth,p).x;return nearFar.x*nearFar.y/(nearFar.y-z*(nearFar.y-nearFar.x));}
       void main(){
         vec3 color=texture2D(beauty,vUv).rgb;float center=distanceAt(vUv);float occlusion=0.;
@@ -62,12 +74,28 @@ async function start(){
           occlusion+=smoothstep(.012,.13,difference)*(1.-smoothstep(.2,.8,difference));
         }
         color*=1.-occlusion*${(.042*12/AO_SAMPLES).toFixed(8)};
+        // Light through water is a volume, not a backdrop: march the camera ray as far as
+        // the depth buffer allows and sum the LED beams it crosses. Because the march stops
+        // at the first surface, a shaft is cut off by the rock in front of it and the water
+        // gains a front and a back instead of sitting on one plane.
+        vec3 forward=normalize(rayZ);
+        vec3 ray=normalize(rayZ+rayX*(vUv.x*2.-1.)+rayY*(vUv.y*2.-1.));
+        float span=min(center/max(.05,dot(ray,forward)),34.);
+        // Interleaved gradient noise, not a hash of uv: six samples of a smooth field show
+        // their step edges otherwise, and this dithers them into grain the eye ignores.
+        float dither=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))));
+        float beams=0.;
+        for(int i=0;i<${VOLUME_SAMPLES};i++){
+          beams+=reefShaft(eye+ray*(span*(float(i)+dither)/${VOLUME_SAMPLES}.),volumeTime);
+        }
+        color+=vec3(.0036,.0080,.0122)*beams*span/${VOLUME_SAMPLES}.;
         float vignette=dot((vUv-.5)*vec2(1.,.85),(vUv-.5)*vec2(1.,.85));color*=1.-vignette*.16;
         gl_FragColor=vec4(color,1.);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`});
   postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),post));
+  applyView(view);
   // Reef LEDs: a cool white key with a violet actinic wash from above. Warm tones come only
   // from the animals and coral tissue themselves. The ground half of the hemisphere stands
   // in for the bounce off the bright aragonite bed, so the shaded side of a coral branch
@@ -89,7 +117,7 @@ async function start(){
   const fishSchool=createFishSchool(scene,simulation);
   const shrimp=createShrimp(scene,simulation),particles=createParticles(scene,simulation);
   function sync(dt){
-    waterTime.value=simulation.time;
+    waterTime.value=simulation.time;post.uniforms.volumeTime.value=simulation.time;
     fishSchool.update();
     shrimp.update();particles.update(dt);
   }
@@ -146,7 +174,7 @@ async function start(){
     }
     // Keep the central host in portrait; wide screens get the two tank islands.
     camera.fov=views[view].fov+(view==='wide'&&camera.aspect<1.3?Math.min(15,(1.3-camera.aspect)*22):0);
-    camera.updateProjectionMatrix();particles.setPixelRatio(ratio);
+    camera.updateProjectionMatrix();syncPostCamera();particles.setPixelRatio(ratio);
     if(draw&&!document.hidden)render();
   }
   const observer=new ResizeObserver(()=>resize());observer.observe(habitat);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { merge, ellipsoid, tint } from './geometry.js';
 import { randomGenerator, groundHeight } from './math.js';
-import { underwater } from './water.js';
+import { underwater, causticGLSL, waterTime } from './water.js';
 import { ROCKS, HOST, STATIONS, TANK } from './layout.js';
 export {ROCKS,HOST,STATIONS};
 let surfaceField=null,surfaceW=0,surfaceH=0;
@@ -94,28 +94,42 @@ export async function createTerrain(scene){
   return {obstacles:ROCKS,host:HOST,stations:STATIONS};
 }
 /** The tank's back wall, seen from inside the water: deep blue at the sand, brightening
- *  toward the lamps. Nothing of the enclosure itself (glass, rim, pumps) is modelled. */
+ *  toward the lamps. Nothing of the enclosure itself (glass, rim, pumps) is modelled.
+ *  A flat ramp is what makes a tank read as a painted backdrop, so the wall carries the
+ *  same ripple the bed does, the bars of the LED array above it, and a slow large-scale
+ *  mottle — all of it moving, none of it resolvable as a pattern. */
 export function createBackdrop(scene){
-  const backMat=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog]),fog:true,
+  const backMat=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{reefTime:{value:0}}]),fog:true,
     vertexShader:`varying vec3 p;
       #include <fog_pars_vertex>
       void main(){p=position;vec4 mvPosition=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mvPosition;
       #include <fog_vertex>
       }`,
-    fragmentShader:`varying vec3 p;
+    fragmentShader:`varying vec3 p;uniform float reefTime;
       #include <fog_pars_fragment>
+      ${causticGLSL}
       void main(){
         float top=smoothstep(-3.5,9.5,p.y);
         float wash=.55+.45*(exp(-pow((p.x+3.6)/6.,2.))+exp(-pow((p.x-4.4)/5.5,2.)));
-        // The base is lit water over a bed receding into haze, not a black wall: anything
-        // darker and the sand's far edge reads as a cut-out horizon through the arch.
         vec3 col=mix(vec3(.038,.080,.138),vec3(.022,.066,.150)*wash,top);
         col+=vec3(.030,.052,.070)*exp(-pow((p.y+.35)/1.5,2.));
+        // The ripple that draws glitter on the bed also plays across the wall, softened by
+        // the water it has crossed to get there.
+        float ripple=reefIrradiance(vec3(p.x,p.y,-4.1),reefTime).g-.86;
+        col+=vec3(.020,.042,.060)*clamp(ripple,-.5,1.1)*smoothstep(-1.,5.,p.y);
+        // The LED array reads on the wall as soft vertical bars that drift, not as a ramp.
+        float bars=sin(p.x*.62+.5*sin(p.y*.21+reefTime*.045))*sin(p.x*.23-reefTime*.031+1.4);
+        col+=vec3(.006,.013,.021)*max(0.,bars)*smoothstep(-.5,7.,p.y);
+        // Slow blotching so the gradient is never mathematically smooth.
+        col*=.93+.14*sin(p.x*.37+1.9*sin(p.y*.29+reefTime*.021))*sin(p.y*.24-reefTime*.017);
         gl_FragColor=vec4(col,1.);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
       }`});
   const backGeo=new THREE.PlaneGeometry(44,24);backGeo.translate(0,7,TANK.back-.05);
-  scene.add(new THREE.Mesh(backGeo,backMat));
+  const wall=new THREE.Mesh(backGeo,backMat);
+  // The wall is not an `underwater` material, so it carries the shared clock itself.
+  wall.onBeforeRender=()=>{backMat.uniforms.reefTime.value=waterTime.value;};
+  scene.add(wall);
 }

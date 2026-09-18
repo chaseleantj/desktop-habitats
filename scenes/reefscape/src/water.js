@@ -48,6 +48,15 @@ vec2 reefResponse(vec3 p,float t,float tau){
   ${PULSES.map(q=>`drive+=${n(q.amp)}*cos(${n(q.omega)}*t+${n(q.phase)}-atan(${n(q.omega)}*tau))/sqrt(1.+pow(${n(q.omega)}*tau,2.));`).join('\n')}
   return vec2(profile,.12*sin(p.x*.23+p.z*.37)*profile)*drive;
 }`;
+// The lamp bank above the tank, as seen from inside the water: leaning beams that drift
+// slowly across it. The post pass integrates this along the view ray and the suspended
+// motes read it at their own position, so a speck brightens as it drifts into a shaft.
+export const shaftGLSL=`
+float reefShaft(vec3 p,float t){
+  float u=p.x+p.y*.15,w=p.z-p.y*.09;
+  float beam=sin(u*1.02+.55*sin(w*.61+t*.05))*sin(u*.41-w*.27-t*.037+1.1);
+  return max(0.,beam)*smoothstep(-1.5,6.5,p.y);
+}`;
 export const causticGLSL=`
 vec3 reefIrradiance(vec3 p,float t){
   float depth=clamp(${n(h)}-p.y,.02,9.);

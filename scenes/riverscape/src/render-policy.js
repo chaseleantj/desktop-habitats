@@ -6,8 +6,9 @@ export const PROFILES = Object.freeze({
     resolution: 1.25,
     batteryResolution: 1.15,
     shadowSize: 2048,
-    shadowHz: 30,
-    batteryShadowHz: 15,
+    // Every frame: at 20-30 fps a slower shadow refresh makes moving shadows step visibly.
+    shadowHz: Infinity,
+    batteryShadowHz: Infinity,
     aoSamples: 8,
     backgroundDensity: 0.7,
     backgroundRows: 20,

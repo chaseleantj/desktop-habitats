@@ -416,8 +416,7 @@ function geometryBuilder() {
     progress = [],
     indices = [];
   return {
-    add(geometry, part, matrix, finProgress) {
-      if (matrix) geometry.applyMatrix4(matrix);
+    add(geometry, part, finProgress) {
       const position = geometry.getAttribute("position");
       const normal = geometry.getAttribute("normal");
       const uv = geometry.getAttribute("uv");
@@ -622,7 +621,7 @@ function finFan(
   }
   const membrane = fromArrays(positions, [], uvs, indices);
   membrane.computeVertexNormals();
-  membranes.add(membrane, part, null, progress);
+  membranes.add(membrane, part, progress);
 }
 
 // Insertion lines read off the body surface, so every fin is rooted in the skin
@@ -1202,8 +1201,7 @@ export function createFishMaterials() {
     side: THREE.DoubleSide,
     depthWrite: false,
   });
-  // Both materials run the same fragment hook; the define tells them apart.
-  skin.defines.FISH_OPAQUE = "";
+  // Both materials run the same fragment hook; the define marks out the fin membranes.
   fins.defines.FISH_MEMBRANE = "";
   return { skin, fins };
 }

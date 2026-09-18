@@ -8,7 +8,7 @@ import {
   vec,
 } from "./math.js";
 import { FLOW_DIRECTION } from "./water.js";
-import { TAU, blade, foliageDepth, foliageMaterial, stem } from "./foliage.js";
+import { TAU, blade, foliageDepth, foliageMaterial } from "./foliage.js";
 import { plantForeground } from "./broadleaf.js";
 import { plantStems } from "./stemplants.js";
 

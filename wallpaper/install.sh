@@ -10,22 +10,25 @@ app="$HOME/Applications/Aquarium Wallpaper.app"
 agent="$HOME/Library/LaunchAgents/$label.plist"
 domain="gui/$(id -u)"
 
+if ! command -v swiftc >/dev/null; then
+	echo "swiftc is missing. Install the Xcode command line tools: xcode-select --install" >&2
+	exit 1
+fi
+
 build=$(mktemp -d)
 trap 'rm -rf "$build"' EXIT
-swiftc -O -target arm64-apple-macos13.0 -o "$build/AquariumWallpaper" \
+# Built for this machine's own architecture; the binary never leaves it.
+swiftc -O -target "$(uname -m)-apple-macos13.0" -o "$build/AquariumWallpaper" \
 	"$here/Wallpaper.swift" -framework Cocoa -framework WebKit -framework IOKit
 
 launchctl bootout "$domain/$label" 2>/dev/null || true
 
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/scene/assets"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/scene"
 cp "$build/AquariumWallpaper" "$app/Contents/MacOS/AquariumWallpaper"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 cp "$project/wallpaper.html" "$project/style.css" "$app/Contents/Resources/scene/"
-cp -R "$project/src" "$project/vendor" "$app/Contents/Resources/scene/"
-# Only the surface maps the scene loads; the supplied reference picture stays behind.
-cp "$project"/assets/*_diff.jpg "$project"/assets/*_nor_gl.jpg \
-	"$app/Contents/Resources/scene/assets/"
+cp -R "$project/src" "$project/vendor" "$project/assets" "$app/Contents/Resources/scene/"
 codesign --force --sign - "$app" >/dev/null 2>&1 || true
 
 mkdir -p "$(dirname "$agent")"
@@ -61,8 +64,10 @@ launchctl kickstart -k "$domain/$label"
 # The desktop picture behind the live layer: what login, Mission Control and Stage Manager
 # show before the scene is drawing. It is a frame of the scene itself.
 still="$HOME/Pictures/Aquarium Wallpaper.png"
+mkdir -p "$HOME/Pictures"
+echo "Waiting for the first frame, then setting the still picture."
 sleep 8
-if pid=$(pgrep -f "Aquarium Wallpaper.app/Contents/MacOS/AquariumWallpaper"); then
+if pid=$(pgrep -n -f "Aquarium Wallpaper.app/Contents/MacOS/AquariumWallpaper"); then
 	kill -USR1 "$pid" && sleep 7
 	if [ -s /tmp/aquarium-wallpaper.png ]; then
 		cp /tmp/aquarium-wallpaper.png "$still"

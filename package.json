@@ -1,7 +1,7 @@
 {
   "name": "freshwater-aquarium",
   "version": "1.0.0",
-  "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "An interactive freshwater aquascape rendered in WebGL2 and GLSL.",
   "scripts": {

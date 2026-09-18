@@ -185,8 +185,6 @@ export function blade(
   const start = batch.positions.length / 3;
   const phase = range(0, TAU);
   const turn = ribbon ? range(-0.7, 0.7) : range(-0.12, 0.12);
-  const broad = width > 0.14 && !ribbon;
-  const forwardTilt = broad ? range(0.38, 0.87) : 0;
   const brown = new THREE.Color("#6b5a2a");
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
@@ -195,15 +193,10 @@ export function blade(
     const theta = twist + turn * t;
     const side = vec(Math.cos(theta), 0, Math.sin(theta));
     side.addScaledVector(tangent, -side.dot(tangent)).normalize();
-    if (broad) {
-      const facing = vec(tangent.y, -tangent.x, 0).normalize();
-      if (facing.dot(side) < 0) facing.negate();
-      side.lerp(facing, forwardTilt).normalize();
-    }
     const normal = new THREE.Vector3().crossVectors(side, tangent).normalize();
     const envelope = ribbon
       ? Math.pow(Math.sin(Math.PI * Math.pow(t, 0.58)), 0.34)
-      : Math.pow(Math.sin(Math.PI * Math.pow(t, 0.73)), broad ? 0.59 : 0.76);
+      : Math.pow(Math.sin(Math.PI * Math.pow(t, 0.73)), 0.76);
     const halfWidth = width * Math.max(0.005, envelope);
     const strand = attached || {
       direction: normal,

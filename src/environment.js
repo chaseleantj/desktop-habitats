@@ -21,8 +21,8 @@ import {
 const TAU = Math.PI * 2;
 
 // Moss and algae settle where light reaches, where the current is sheltered, and where the
-// aquascaper tied moss on. Coverage runs 0 (bare) to 1 (dense turf). `age` varies how far
-// each region's colonies have spread, so patches sit at different stages of growth.
+// aquascaper tied moss on. Coverage runs 0 (bare) to 1 (dense turf). A slow noise field
+// lowers the threshold unevenly, so patches sit at different stages of growth.
 const MOSS_COLONIES = [
   // The tied-on clump at the fork of the trunk, and a thinner growth higher up.
   { center: vec(1.55, 3.07, 0.05), radius: 1.0, strength: 0.75 },
@@ -177,7 +177,7 @@ function growMoss(geometry, matrix, shelterAt, bias = 0) {
   for (let i = 0; i < positions.count; i++) {
     p.fromBufferAttribute(positions, i).applyMatrix4(matrix);
     n.fromBufferAttribute(normals, i).applyMatrix3(normalMatrix).normalize();
-    const c = mossCoverage(p, n, shelterAt ? shelterAt(p, i) : 0, bias);
+    const c = mossCoverage(p, n, shelterAt(p, i), bias);
     coverage[i] = c;
     if (c > 0.3)
       samples.push({ position: p.clone(), normal: n.clone(), coverage: c });

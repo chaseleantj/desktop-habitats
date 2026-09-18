@@ -28,7 +28,7 @@ const between = (a, b) => a + (b - a) * rand();
 const UP = vec(0, 1, 0);
 const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
 
-// The rock table mirrors `rocks` in environment.js: epiphytes need the faces it describes,
+// The rock table mirrors `ROCKS` in environment.js: epiphytes need the faces it describes,
 // and nothing may root inside one. Each rock is a unit sphere cut back by fifteen planes,
 // noise and pits, which leaves its surface near 0.78 of its radii and never much past 0.95.
 const ROCK_FACE = 0.78;

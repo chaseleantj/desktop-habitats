@@ -28,7 +28,7 @@ canvas {
 [data-fit="fill"] main {
   height: 100vh;
 }
-#aquatica:fullscreen canvas {
+#habitat:fullscreen canvas {
   position: absolute;
   top: 50%;
   height: min(100%, 52.113vw);

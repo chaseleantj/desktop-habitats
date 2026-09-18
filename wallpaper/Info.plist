@@ -5,13 +5,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>Aquatica</string>
+	<string>Desktop Habitats</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.chaselean.aquatica</string>
+	<string>com.chaselean.desktop-habitats</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Aquatica</string>
+	<string>Desktop Habitats</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

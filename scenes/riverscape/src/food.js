@@ -39,7 +39,7 @@ const PELLET = {
   stagger: [0.03, 0.12],
   perPinch: 10,
   capacity: 100,
-  life: [20, 60],
+  life: [20, 40],
   swallow: 0.12,
   shoveLimit: 0.36,
 };

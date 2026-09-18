@@ -14,8 +14,9 @@ import Cocoa
 import WebKit
 import IOKit.ps
 
-let sceneScheme = "aquatica"
+let sceneScheme = "desktop-habitats"
 let sceneHost = "local"
+let scenePage = "/scenes/riverscape/wallpaper.html"
 
 /// Serves the bundled copy of the aquarium to the web view.
 final class SceneHandler: NSObject, WKURLSchemeHandler {
@@ -33,7 +34,7 @@ final class SceneHandler: NSObject, WKURLSchemeHandler {
 
   func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
     guard let url = task.request.url else { return }
-    let path = url.path == "" || url.path == "/" ? "/wallpaper.html" : url.path
+    let path = url.path == "" || url.path == "/" ? scenePage : url.path
     let file = root.appendingPathComponent(path).standardizedFileURL
     guard file.path.hasPrefix(root.path + "/"), let data = try? Data(contentsOf: file) else {
       task.didFailWithError(
@@ -57,7 +58,7 @@ final class Reporter: NSObject, WKScriptMessageHandler {
   func userContentController(
     _ controller: WKUserContentController, didReceive message: WKScriptMessage
   ) {
-    NSLog("aquatica page: \(message.body)")
+    NSLog("desktop-habitats page: \(message.body)")
   }
 }
 
@@ -104,15 +105,15 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     settings.userContentController.addUserScript(
       WKUserScript(
         source: """
-          window.aquaticaPointerCount = 0;
-          window.aquaticaPointer = (x, y) => {
+          window.habitatPointerCount = 0;
+          window.habitatPointer = (x, y) => {
             const canvas = document.querySelector('#scene');
-            window.aquaticaPointerCount++;
+            window.habitatPointerCount++;
             if (canvas)
               canvas.dispatchEvent(
                 new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
           };
-          window.aquaticaPointerOut = () => {
+          window.habitatPointerOut = () => {
             const canvas = document.querySelector('#scene');
             if (canvas) canvas.dispatchEvent(new PointerEvent('pointerleave'));
           };
@@ -152,7 +153,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     window.setFrame(screen.frame, display: true)
     window.orderFrontRegardless()
 
-    view.load(URLRequest(url: URL(string: "\(sceneScheme)://\(sceneHost)/wallpaper.html")!))
+    view.load(URLRequest(url: URL(string: "\(sceneScheme)://\(sceneHost)\(scenePage)")!))
   }
 
   func close() {
@@ -171,7 +172,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   func setRate(_ wanted: Int) {
     if wanted != rate {
       rate = wanted
-      NSLog("aquatica: \(rate) fps")
+      NSLog("desktop-habitats: \(rate) fps")
     }
     send()
   }
@@ -179,7 +180,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   private func send() {
     guard loaded else { return }
     view.evaluateJavaScript(
-      "typeof aquaticaRate === 'function' && aquaticaRate(\(rate))")
+      "typeof habitatRate === 'function' && habitatRate(\(rate))")
   }
 
   /// A pinch of food on the water, asked for from the menu rather than by clicking. The
@@ -188,20 +189,20 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   /// where the food would only pile up unseen until it started again.
   func feed() {
     guard loaded, rate > 0 else { return }
-    view.evaluateJavaScript("typeof aquaticaFeed === 'function' && aquaticaFeed()")
+    view.evaluateJavaScript("typeof habitatFeed === 'function' && habitatFeed()")
   }
 
   /// A cursor position in this screen's coordinates, or nil when the cursor left it.
   func setPointer(_ point: NSPoint?) {
     guard loaded, rate > 0 else { return }
     guard let point else {
-      if inside { view.evaluateJavaScript("aquaticaPointerOut()") }
+      if inside { view.evaluateJavaScript("habitatPointerOut()") }
       inside = false
       return
     }
     inside = true
     view.evaluateJavaScript(
-      "aquaticaPointer(\(String(format: "%.1f", point.x)),\(String(format: "%.1f", point.y)))")
+      "habitatPointer(\(String(format: "%.1f", point.x)),\(String(format: "%.1f", point.y)))")
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -213,7 +214,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
     withError error: Error
   ) {
-    NSLog("aquatica: the scene did not load: \(error.localizedDescription)")
+    NSLog("desktop-habitats: the scene did not load: \(error.localizedDescription)")
   }
 
   /// What the page thinks it is doing, for the log.
@@ -229,12 +230,12 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
           webgl2: Boolean(context),
           gpu: context && context.getParameter(context.RENDERER),
           hidden: document.hidden,
-          pointers: window.aquaticaPointerCount,
+          pointers: window.habitatPointerCount,
         });
       })()
       """
     ) { value, error in
-      NSLog("aquatica page state: \(value ?? error?.localizedDescription ?? "unreadable")")
+      NSLog("desktop-habitats page state: \(value ?? error?.localizedDescription ?? "unreadable")")
     }
   }
 
@@ -247,7 +248,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
         let png = NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:])
       else { return }
       try? png.write(to: file)
-      NSLog("aquatica: wrote \(file.path)")
+      NSLog("desktop-habitats: wrote \(file.path)")
     }
   }
 }
@@ -342,7 +343,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
       self?.applyRate()
     }
 
-    // `kill -USR1` writes what the first screen is showing to /tmp/aquatica.png.
+    // `kill -USR1` writes what the first screen is showing to /tmp/desktop-habitats.png.
     signal(SIGUSR1, SIG_IGN)
     snapshots = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
     snapshots?.setEventHandler { [weak self] in self?.snapshot() }
@@ -355,7 +356,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     for screen in screens { screen.setRate(60) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
       first.probe()
-      first.snapshot(to: URL(fileURLWithPath: "/tmp/aquatica.png")) {
+      first.snapshot(to: URL(fileURLWithPath: "/tmp/desktop-habitats.png")) {
         self?.applyRate()
       }
     }
@@ -439,11 +440,11 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// The agent's only visible piece: a fish in the menu bar that can stop the water.
   private func addMenu() {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    let symbol = NSImage(systemSymbolName: "fish", accessibilityDescription: "Aquatica")
+    let symbol = NSImage(systemSymbolName: "fish", accessibilityDescription: "Desktop Habitats")
     symbol?.isTemplate = true
     item.button?.image = symbol
-    if symbol == nil { item.button?.title = "Aquatica" }
-    item.button?.toolTip = "Aquatica"
+    if symbol == nil { item.button?.title = "Desktop Habitats" }
+    item.button?.toolTip = "Desktop Habitats · Riverscape"
 
     let menu = NSMenu()
     menu.delegate = self
@@ -467,7 +468,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     item.menu = menu
     status = item
     if item.button?.window == nil || !item.isVisible {
-      NSLog("aquatica: the menu bar item did not appear")
+      NSLog("desktop-habitats: the menu bar item did not appear")
     }
   }
 

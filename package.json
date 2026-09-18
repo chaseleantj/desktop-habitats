@@ -1,14 +1,14 @@
 {
-  "name": "aquatica",
+  "name": "desktop-habitats",
   "version": "1.0.0",
   "license": "MIT",
   "type": "module",
-  "description": "An interactive freshwater aquascape rendered in WebGL2 and GLSL.",
+  "description": "Living desktop scenes for macOS, starting with Riverscape, a freshwater aquarium.",
   "scripts": {
     "start": "node serve.mjs",
     "wallpaper": "sh wallpaper/install.sh",
     "unwallpaper": "sh wallpaper/uninstall.sh",
-    "check": "node --check serve.mjs && for f in src/*.js; do node --check \"$f\" || exit 1; done",
-    "test": "node tests/fish-behavior.mjs"
+    "check": "node --check serve.mjs && for f in scenes/*/src/*.js; do node --check \"$f\" || exit 1; done",
+    "test": "node scenes/riverscape/tests/fish-behavior.mjs"
   }
 }

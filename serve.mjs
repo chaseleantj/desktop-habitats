@@ -40,5 +40,5 @@ http
     }
   })
   .listen(port, "127.0.0.1", () =>
-    console.log(`Aquatica: http://localhost:${port}`),
+    console.log(`Desktop Habitats: http://localhost:${port}`),
   );

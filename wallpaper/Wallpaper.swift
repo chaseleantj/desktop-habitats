@@ -77,6 +77,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   private var loaded = false
   private var inside = false
   private var rate = 0
+  private var battery = false
 
   init(screen: NSScreen, root: URL) {
     let settings = WKWebViewConfiguration()
@@ -167,20 +168,34 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     window.close()
   }
 
-  /// Frames a second, or zero to stop drawing while nothing can be seen. Sent again on
-  /// every pass: the page's modules may not have been listening the first time.
-  func setRate(_ wanted: Int) {
-    if wanted != rate {
-      rate = wanted
-      NSLog("desktop-habitats: \(rate) fps")
+  /// Send only state changes. didFinish resends once after navigation, so there is no
+  /// need to cross the WebKit process boundary every second with an unchanged rate.
+  @discardableResult
+  func setRate(_ wanted: Int) -> Bool {
+    guard wanted != rate else { return false }
+    rate = wanted
+    if rate == 0 && inside {
+      if loaded { view.evaluateJavaScript("habitatPointerOut()") }
+      inside = false
     }
+    NSLog("desktop-habitats: \(rate) fps")
+    send()
+    return true
+  }
+
+  func setPower(_ onBattery: Bool) {
+    guard battery != onBattery else { return }
+    battery = onBattery
     send()
   }
 
   private func send() {
     guard loaded else { return }
     view.evaluateJavaScript(
-      "typeof habitatRate === 'function' && habitatRate(\(rate))")
+      """
+      typeof habitatPower === 'function' && habitatPower(\(battery ? "true" : "false"));
+      typeof habitatRate === 'function' && habitatRate(\(rate));
+      """)
   }
 
   /// A pinch of food on the water, asked for from the menu rather than by clicking. The
@@ -266,6 +281,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let pause = NSMenuItem()
   private let feed = NSMenuItem()
   private var applied = 0
+  private var pointerTimer: Timer?
+  private var pointerRate = 0
+  private var exposureTimer: Timer?
   /// The choice outlives a restart, so a paused tank is still paused after logging in.
   /// Until one has been made there is nothing under the key at all, which is what lets a
   /// machine that asks for less motion start still without overruling anybody who has
@@ -336,13 +354,6 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
       CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
     }
 
-    Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-      self?.trackPointer()
-    }
-    Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-      self?.applyRate()
-    }
-
     // `kill -USR1` writes what the first screen is showing to /tmp/desktop-habitats.png.
     signal(SIGUSR1, SIG_IGN)
     snapshots = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
@@ -385,32 +396,66 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// Full speed while the wallpaper is in plain sight, a slow beat when windows leave only
   /// part of it showing, and nothing at all behind a full screen of work or a dark display.
-  /// A full-rate scene at this size costs the graphics processor ten to twenty watts, which
-  /// is worth spending only on water somebody is actually looking at.
+  /// Power depends on the machine and display; it must be measured on the target Mac.
   func applyRate() {
-    let full = onBattery ? 30 : 60
+    let battery = onBattery
+    let full = battery ? 30 : 60
     let still = stopped || lowPower || !awake
+    // Read the window list once for all displays, and never while deliberately still.
+    let blockers = still ? [] : windowBlockers()
     applied = 0
+    var changed = false
     for (index, screen) in screens.enumerated() {
-      let showing = index < layout.count ? exposure(layout[index]) : 1
+      let showing = index < layout.count ? exposure(layout[index], blockers: blockers) : 1
       let rate = still || showing < 0.15 ? 0 : showing < 0.4 ? 20 : full
-      screen.setRate(rate)
+      screen.setPower(battery)
+      if screen.setRate(rate) { changed = true }
       applied = max(applied, rate)
+    }
+    if changed { lastPoint = NSPoint(x: -1e4, y: -1e4) }
+    updateTimers(pollExposure: !still)
+  }
+
+  private func updateTimers(pollExposure: Bool) {
+    // Pointer sampling need not outrun the animation, nor wake a stopped wallpaper.
+    let wanted = min(30, applied)
+    if wanted != pointerRate {
+      pointerTimer?.invalidate()
+      pointerTimer = nil
+      pointerRate = wanted
+      if wanted > 0 {
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / Double(wanted), repeats: true) { [weak self] _ in
+          self?.trackPointer()
+        }
+        timer.tolerance = 0.003
+        pointerTimer = timer
+      }
+    }
+    if !pollExposure {
+      exposureTimer?.invalidate()
+      exposureTimer = nil
+    } else if exposureTimer == nil {
+      // Continue this low-frequency check while merely covered so uncovering resumes.
+      let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        self?.applyRate()
+      }
+      timer.tolerance = 0.25
+      exposureTimer = timer
     }
   }
 
   /// How much of a screen ordinary windows leave uncovered, from none to all of it.
   /// AppKit's own occlusion never reports this agent's windows as visible, hence the
   /// direct look at what is on screen.
-  private func exposure(_ frame: CGRect) -> Double {
+  private func windowBlockers() -> [CGRect] {
     guard
       let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
         as? [[String: Any]]
-    else { return 1 }
+    else { return [] }
     let me = ProcessInfo.processInfo.processIdentifier
     // Only ordinary app windows count. The menu bar, the Dock and other system layers
     // hold full-screen windows that are almost entirely transparent.
-    let blockers = list.compactMap { info -> CGRect? in
+    return list.compactMap { info -> CGRect? in
       guard info[kCGWindowLayer as String] as? Int == 0,
         info[kCGWindowOwnerPID as String] as? Int32 != me,
         info[kCGWindowAlpha as String] as? Double ?? 0 > 0.95,
@@ -418,6 +463,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
       else { return nil }
       return CGRect(dictionaryRepresentation: bounds as CFDictionary)
     }
+  }
+
+  private func exposure(_ frame: CGRect, blockers: [CGRect]) -> Double {
     guard !blockers.isEmpty else { return 1 }
     let flipped = CGRect(
       x: frame.minX, y: (NSScreen.screens.first?.frame.height ?? frame.maxY) - frame.maxY,

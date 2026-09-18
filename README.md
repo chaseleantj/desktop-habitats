@@ -48,7 +48,9 @@ The desktop app supports macOS only. The browser preview needs a browser with We
 
 It uses more power than a still wallpaper because it renders a 3D scene. The amount depends on your Mac, screen resolution and number of displays. There isn't a measured battery-life estimate yet.
 
-The wallpaper adjusts its frame rate to reduce power use:
+The optimized build thins the rear rivergrass by about 30%, reduces oversampling and shadow work, and fully stops the render loop when paused or hidden. It keeps 4× multisampling, the HDR lighting, all 24 fish and the foreground planting. On an M5 Pro this halves the GPU time per frame; battery drain has not been measured. See [the optimization notes and A/B procedure](docs/OPTIMIZATION.md).
+
+The wallpaper keeps the same frame-rate limits, so rendering improvements are not spent on extra frames:
 
 | Desktop state | Rendering |
 | --- | --- |
@@ -141,7 +143,9 @@ npm run check
 npm test
 ```
 
-These check JavaScript syntax and simulate swimming, spacing, startle responses and feeding. They do not verify visual quality or battery use.
+These check JavaScript syntax; simulate swimming, spacing, startle responses and feeding; verify render budgets and frame pacing at 60/120 Hz; and confirm that rear-grass thinning leaves the foreground geometry and downstream random sequence unchanged. They also check that paused/hidden scenes have no scheduled render callbacks. They do not measure Mac battery use.
+
+The default rendering profile is `balanced`. Append `?quality=reference&still=1` to a scene page for the original density/render budgets at simulation time zero, or `?still=1` for the optimized still. Append `diagnostics=1` to enable the local `habitatBenchmark()` function. Nothing is uploaded. Details, tradeoffs and measurement limitations are in [OPTIMIZATION.md](docs/OPTIMIZATION.md).
 
 Browser errors appear in the developer console. Wallpaper errors and frame-rate changes go to `/tmp/desktop-habitats.log`. Sending `SIGUSR1` to the Desktop Habitats process saves a snapshot of its first tank to `/tmp/desktop-habitats.png`.
 

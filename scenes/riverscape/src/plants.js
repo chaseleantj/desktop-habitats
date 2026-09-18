@@ -17,7 +17,7 @@ const FLOW_ANGLE = Math.atan2(FLOW_DIRECTION.z, FLOW_DIRECTION.x);
 // Rivergrass: a rosette of long, very thin ribbon leaves. Older outer leaves are longer,
 // paler and lean further; most leaves grow out along the current that has shaped them,
 // and the oldest tips have begun to brown.
-function ribbonRosette(batch, x, z, height, count) {
+function ribbonRosette(batch, x, z, height, count, background = null) {
   const root = vec(x, groundHeight(x, z) - 0.025, z);
   for (let i = 0; i < count; i++) {
     const age = random();
@@ -45,8 +45,9 @@ function ribbonRosette(batch, x, z, height, count) {
       0.2 + 0.17 * age,
     );
     blade(batch, points, range(0.044, 0.115), color, root, range(0.85, 1.15), {
-      rows: 30,
-      cols: 6,
+      rows: background ? background.rows : 30,
+      cols: background ? background.cols : 6,
+      emit: background ? background.keep() : true,
       twist: theta + Math.PI / 2,
       ribbon: true,
       thin: 1,
@@ -139,8 +140,24 @@ const BEDS = [
 ];
 const grassHeight = (x) => 5.4 + 4.0 * smoothstep(2.0, 7.5, Math.abs(x));
 
-export function createPlants(scene) {
+export function createPlants(scene, {
+  backgroundDensity = 0.7, backgroundRows = 20, backgroundCols = 2, animatedShadows = true,
+} = {}) {
   const batch = new GeometryBatch();
+  const density = Number.isFinite(backgroundDensity) ? Math.max(0, Math.min(1, backgroundDensity)) : 0.7;
+  const stats = { backgroundCandidates: 0, backgroundKept: 0 };
+  const background = {
+    rows: Math.max(4, Math.round(backgroundRows)),
+    cols: Math.max(2, Math.round(backgroundCols)),
+    keep() {
+      const i = stats.backgroundCandidates++;
+      // Distributed, deterministic thinning, not clump removal. No extra random draws:
+      // the retained leaves, rocks, foreground plants and fish keep their old seeds.
+      const keep = Math.floor((i + 1) * density + 1e-9) > Math.floor(i * density + 1e-9);
+      if (keep) stats.backgroundKept++;
+      return keep;
+    },
+  };
   for (const bed of BEDS) {
     const scale = bed.height ?? 1;
     for (let c = 0; c < bed.clumps; c++) {
@@ -159,6 +176,7 @@ export function createPlants(scene) {
           z,
           grassHeight(x) * scale * range(0.85, 1.1),
           Math.floor(range(10, 16)),
+          background,
         );
       }
     }
@@ -171,6 +189,7 @@ export function createPlants(scene) {
         range(bed.minZ, bed.maxZ),
         grassHeight(x) * scale * range(0.55, 0.8),
         Math.floor(range(5, 8)),
+        background,
       );
     }
   }
@@ -178,8 +197,10 @@ export function createPlants(scene) {
   // middle where the channel runs back into open water.
   for (let i = 0; i < 10; i++) {
     const x = range(3.4, 9.8) * (i % 2 ? 1 : -1);
-    ribbonRosette(batch, x, range(-5.9, -4.8), grassHeight(x) * range(0.6, 0.85), 10);
+    ribbonRosette(batch, x, range(-5.9, -4.8), grassHeight(x) * range(0.6, 0.85), 10, background);
   }
+  stats.backgroundVertices = batch.positions.length / 3;
+  stats.backgroundTriangles = batch.indices.length / 3;
   plantForeground(batch);
   // Tufts along the banks break up the stone-to-sand boundaries, and two at the far right
   // carry the bed down to the glass so no bare sand shows behind the Echinodorus.
@@ -227,9 +248,12 @@ export function createPlants(scene) {
   ])
     ribbonRosette(batch, x, z, height, leaves);
   const mesh = new THREE.Mesh(batch.geometry(), foliageMaterial());
-  mesh.customDepthMaterial = foliageDepth();
+  mesh.name = 'Aquatic planting';
+  mesh.customDepthMaterial = foliageDepth({ animated: animatedShadows });
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
-  return { mesh, thickets: THICKETS };
+  stats.vertices = mesh.geometry.attributes.position.count;
+  stats.triangles = mesh.geometry.index.count / 3;
+  return { mesh, thickets: THICKETS, stats };
 }

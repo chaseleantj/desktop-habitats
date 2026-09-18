@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { range, smoothstep, vec } from "./math.js";
-import { FLOW_DIRECTION, currentGLSL, waterLitShader } from "./water.js";
+import { FLOW_DIRECTION, currentGLSL, waterLitShader, waterTime } from "./water.js";
 
 // Shared foliage construction: the current model in the vertex stage, the submerged
 // leaf material, and the blade and stem generators every plant species is built from.
@@ -28,8 +28,10 @@ const strandVertex = /* glsl */ `
     float bendAmount = drag * 0.09 * s * s / saturation;
     float bendSlope = drag * 0.18 * s / (saturation * saturation);
     float gain = compliance * (0.012 + 0.02 * strength);
-    float envelope = gain * pow(max(s, 1e-4), 1.3);
-    float envelopeSlope = gain * 1.3 * pow(max(s, 1e-4), 0.3);
+    float safeS = max(s, 1e-4);
+    float sPower = pow(safeS, 0.3);
+    float envelope = gain * safeS * sPower;
+    float envelopeSlope = gain * 1.3 * sPower;
     float theta = waterTime * 0.95 - 1.05 * s + phase;
     float ripple = waterTime * 1.55 - 1.7 * s + phase * 2.3;
     float shape = sin(theta) + 0.3 * sin(ripple);
@@ -122,20 +124,22 @@ export function foliageMaterial() {
 }
 
 // Shadows follow the same motion.
-export function foliageDepth() {
+export function foliageDepth({ animated = true } = {}) {
   const material = new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking,
     side: THREE.DoubleSide,
   });
   material.onBeforeCompile = (shader) => {
+    // Depth shaders do not pass through waterLitShader, so bind the clock here too.
+    if (animated) shader.uniforms.waterTime = waterTime;
     shader.vertexShader = strandVertex + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
       `gMotion = strandMotion(anchor, bend.xyz, along.w, bend.w);
       ${strandPosition}`,
     );
-    };
-  material.customProgramCacheKey = () => "aquatic-leaf-shadow-v2";
+  };
+  material.customProgramCacheKey = () => "aquatic-leaf-shadow-v3";
   return material;
 }
 
@@ -173,8 +177,14 @@ export function blade(
     thin = 0.3,
     attached = null,
     browning = 0,
+    emit = true,
   } = {},
 ) {
+  // Even an omitted background blade consumes its original two random values. This
+  // preserves all subsequent procedural geometry rather than regenerating the scene.
+  const phase = range(0, TAU);
+  const turn = ribbon ? range(-0.7, 0.7) : range(-0.12, 0.12);
+  if (!emit) return;
   const curve =
     points.length === 3
       ? new THREE.QuadraticBezierCurve3(...points)
@@ -183,8 +193,6 @@ export function blade(
         : new THREE.CatmullRomCurve3(points);
   const length = curve.getLength();
   const start = batch.positions.length / 3;
-  const phase = range(0, TAU);
-  const turn = ribbon ? range(-0.7, 0.7) : range(-0.12, 0.12);
   const brown = new THREE.Color("#6b5a2a");
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;

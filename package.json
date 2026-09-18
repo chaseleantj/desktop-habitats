@@ -9,6 +9,6 @@
     "wallpaper": "sh wallpaper/install.sh",
     "unwallpaper": "sh wallpaper/uninstall.sh",
     "check": "node --check serve.mjs && for f in scenes/*/src/*.js; do node --check \"$f\" || exit 1; done",
-    "test": "node scenes/riverscape/tests/fish-behavior.mjs"
+    "test": "node scenes/riverscape/tests/fish-behavior.mjs && node scenes/riverscape/tests/render-policy.mjs && node scenes/riverscape/tests/plant-budget.mjs"
   }
 }

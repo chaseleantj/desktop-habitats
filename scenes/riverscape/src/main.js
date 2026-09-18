@@ -5,6 +5,8 @@ import { createFishSchool } from "./fish.js";
 import { createFood } from "./food.js";
 import { randomGenerator } from "./math.js";
 import { waterTime } from "./water.js";
+import { createFrameLoop } from "./frame-loop.js";
+import { renderSettings, framebufferSize } from "./render-policy.js";
 
 const canvas = document.querySelector("#scene");
 const habitat = document.querySelector("#habitat");
@@ -17,17 +19,25 @@ const loading = document.querySelector("#loading");
 let paused =
   document.documentElement.dataset.motion !== "host" &&
   matchMedia("(prefers-reduced-motion: reduce)").matches;
-// The preview renders at 1.5 times its canvas. A host page can ask for a different
-// number of pixels; the wallpaper asks for one per screen pixel, never sampling below
-// the preview's own 1.5.
-const resolution = Number(document.documentElement.dataset.resolution) || 1.5;
-
-// The wallpaper host sets the frame rate: lower on battery, and none at all while the
-// desktop is covered, when drawing the scene would only cost power. A rate of none is
-// already a full stop, since the frame loop turns back before the clock advances.
-let interval = 0;
+const query = new URLSearchParams(location.search);
+const wallpaper = document.documentElement.dataset.motion === "host";
+const profile = query.get("quality") === "reference" ? "reference" : "balanced";
+if (query.get("still") === "1") paused = true;
+let onBattery = false;
+let settings = renderSettings({ profile, wallpaper, pixelRatio: devicePixelRatio });
+let requestedRate = wallpaper ? 0 : 60;
+let loop = null, applyPower = null;
 window.habitatRate = (fps) => {
-  interval = fps > 0 ? 1000 / fps - 1.5 : Infinity;
+  requestedRate = Number.isFinite(fps) && fps > 0 ? Math.min(120, fps) : 0;
+  loop?.setRate(requestedRate);
+};
+// Geometry never changes on a power transition: no plant popping or regeneration.
+window.habitatPower = (battery) => {
+  const next = Boolean(battery);
+  if (next === onBattery) return;
+  onBattery = next;
+  settings = renderSettings({ profile, wallpaper, pixelRatio: devicePixelRatio, onBattery });
+  applyPower?.();
 };
 // A pinch of food, for a host with no pointer to click with. Defined before the scene
 // exists and harmless until it does. Nothing is dropped into water that is not moving,
@@ -35,7 +45,7 @@ window.habitatRate = (fps) => {
 // fish never see, and they would all arrive at once whenever the water started again.
 let sprinkle = null;
 window.habitatFeed = () => {
-  if (sprinkle && !paused && interval !== Infinity) sprinkle();
+  if (sprinkle && !paused && requestedRate > 0 && !document.hidden) sprinkle();
 };
 
 function fail(error) {
@@ -48,10 +58,12 @@ async function start() {
     canvas,
     antialias: false,
     alpha: false,
-    powerPreference: "high-performance",
+    powerPreference: settings.powerPreference,
   });
   renderer.setPixelRatio(1);
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.info.autoReset = false;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.17;
@@ -73,7 +85,7 @@ async function start() {
   key.position.set(-3, 11.5, 4.4);
   key.target.position.set(0, 1, 0);
   key.castShadow = true;
-  key.shadow.mapSize.set(4096, 4096);
+  key.shadow.mapSize.set(settings.shadowSize, settings.shadowSize);
   // The frustum reaches the foot of the backboard behind the right-hand bed; a fragment
   // outside the shadow map is lit as if nothing stood in front of it.
   Object.assign(key.shadow.camera, {
@@ -86,7 +98,8 @@ async function start() {
   });
   key.shadow.bias = -0.00012;
   key.shadow.normalBias = 0.018;
-  key.shadow.radius = 3;
+  // Keep the filter footprint approximately the same in world space.
+  key.shadow.radius = 3 * settings.shadowSize / 4096;
   scene.add(key, key.target);
   const fill = new THREE.DirectionalLight(0xc2d8e4, 0.44);
   fill.position.set(1, 5, 10);
@@ -137,7 +150,9 @@ async function start() {
   backboard.receiveShadow = true;
   scene.add(backboard);
   const { obstacles, landmarks } = await createEnvironment(scene);
-  const plants = createPlants(scene);
+  const plants = createPlants(scene, {
+    ...settings, animatedShadows: profile !== "reference",
+  });
   const food = createFood(scene, { thickets: plants.thickets });
   const fish = createFishSchool(scene, {
     obstacles,
@@ -149,7 +164,7 @@ async function start() {
 
   const target = new THREE.WebGLRenderTarget(1, 1, {
     type: THREE.HalfFloatType,
-    samples: 4,
+    samples: settings.samples,
   });
   target.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
   const postScene = new THREE.Scene(),
@@ -160,22 +175,23 @@ async function start() {
       depth: { value: target.depthTexture },
       size: { value: new THREE.Vector2() },
       nearFar: { value: new THREE.Vector2(camera.near, camera.far) },
+      aoRadiusScale: { value: 1 },
     },
     depthTest: false,
     depthWrite: false,
     vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
     fragmentShader: `
-      uniform sampler2D beauty;uniform sampler2D depth;uniform vec2 size;uniform vec2 nearFar;varying vec2 vUv;
+      uniform sampler2D beauty;uniform sampler2D depth;uniform vec2 size;uniform vec2 nearFar;uniform float aoRadiusScale;varying vec2 vUv;
       float distanceAt(vec2 p){float z=texture2D(depth,p).x;return nearFar.x*nearFar.y/(nearFar.y-z*(nearFar.y-nearFar.x));}
       void main(){
         vec3 color=texture2D(beauty,vUv).rgb;float center=distanceAt(vUv);float occlusion=0.;
-        for(int i=0;i<12;i++) {
-          float a=float(i)*2.399963;float radius=2.5+float(i)*1.35;
-          float sampleDepth=distanceAt(vUv+vec2(cos(a),sin(a))*radius/size);
+        for(int i=0;i<${settings.aoSamples};i++) {
+          float a=float(i)*2.399963;float radius=2.5+float(i)*${(14.85 / (settings.aoSamples - 1)).toFixed(8)};
+          float sampleDepth=distanceAt(vUv+vec2(cos(a),sin(a))*radius*aoRadiusScale/size);
           float difference=center-sampleDepth;
           occlusion+=smoothstep(.012,.13,difference)*(1.-smoothstep(.2,.8,difference));
         }
-        color*=1.-occlusion*.022;
+        color*=1.-occlusion*${(0.022 * 12 / settings.aoSamples).toFixed(8)};
         float vignette=dot((vUv-.5)*vec2(1.,.85),(vUv-.5)*vec2(1.,.85));
         color*=1.-vignette*.15;
         gl_FragColor=vec4(color,1.);
@@ -185,20 +201,49 @@ async function start() {
   });
   postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post));
 
+  let contextLost = false, zeroSize = false, forceShadows = true;
+  const maxDimension = Math.min(renderer.capabilities.maxTextureSize,
+    renderer.getContext().getParameter(renderer.getContext().MAX_RENDERBUFFER_SIZE));
+  function visibility() {
+    loop?.setHidden(document.hidden || contextLost || zeroSize);
+  }
   function resize() {
     const bounds = canvas.getBoundingClientRect();
-    const width = Math.round(bounds.width * resolution),
-      height = Math.round(bounds.height * resolution);
-    renderer.setSize(width, height, false);
-    target.setSize(width, height);
-    post.uniforms.size.value.set(width, height);
-    camera.aspect = bounds.width / bounds.height;
-    camera.updateProjectionMatrix();
-    particles.update(
-      height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)),
-    );
+    // DPR may change when a preview moves between monitors.
+    settings = renderSettings({ profile, wallpaper, pixelRatio: devicePixelRatio, onBattery });
+    const dimensions = framebufferSize(bounds.width, bounds.height, settings.resolution, maxDimension);
+    zeroSize = !dimensions;
+    visibility();
+    if (!dimensions) return;
+    const { width, height, scale } = dimensions;
+    if (target.width !== width || target.height !== height) {
+      renderer.setSize(width, height, false);
+      target.setSize(width, height);
+      post.uniforms.size.value.set(width, height);
+      // Preserve the depth effect's screen-space radius as resolution changes.
+      post.uniforms.aoRadiusScale.value = scale / settings.referenceResolution;
+      camera.aspect = bounds.width / bounds.height;
+      camera.updateProjectionMatrix();
+      particles.update(height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)));
+      forceShadows = true;
+      loop?.invalidate();
+    }
   }
-  new ResizeObserver(resize).observe(habitat);
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(habitat);
+  window.addEventListener("resize", resize);
+  document.addEventListener("visibilitychange", visibility);
+  canvas.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    contextLost = true;
+    visibility();
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    // The prefiltered HDR environment is GPU-generated and cannot be recovered just
+    // by reuploading CPU textures. Rebuild the scene once instead of rendering black.
+    location.reload();
+  });
+  applyPower = () => { forceShadows = true; resize(); };
   resize();
 
   // The pointer is a hand at the front glass. The fish read where it is and how fast it
@@ -246,7 +291,7 @@ async function start() {
   // can only ever say two of the three things.
   const dropPoint = new THREE.Vector3();
   canvas.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || !event.isPrimary || paused) return;
+    if (event.button !== 0 || !event.isPrimary || paused || requestedRate === 0) return;
     const bounds = canvas.getBoundingClientRect();
     raycaster.setFromCamera(
       new THREE.Vector2(
@@ -277,43 +322,73 @@ async function start() {
     if (event.code === "Space") {
       event.preventDefault();
       paused = !paused;
+      loop?.setPaused(paused);
     }
     if (event.key.toLowerCase() === "f") fullscreen();
   });
-  let last = performance.now(),
-    time = 0;
+  // Mesh transforms are static. Fish/food use instance matrices, foliage and particles
+  // move in vertex shaders. Avoid recomposing every unchanged object matrix per frame.
+  scene.traverse((object) => { object.updateMatrix(); object.matrixAutoUpdate = false; });
+  scene.updateMatrixWorld(true);
+  let time = 0, lastShadowTime = -Infinity, renderedFrames = 0, shadowFrames = 0;
   let ready = false;
-  function frame(now) {
-    requestAnimationFrame(frame);
-    if (document.hidden) {
-      last = now;
-      return;
-    }
-    const elapsed = now - last;
-    if (elapsed < interval) return;
-    last = now;
-    const dt = Math.min(0.05, elapsed / 1000);
-    if (!paused) {
-      time += dt;
+  function renderFrame(dt, now) {
+    // Short substeps keep feeding/swimming stable at 20/30 fps without slowing the
+    // simulation down. Long suspended periods never reach this function as elapsed time.
+    // Equal steps, rounded to the nearest 60 Hz count: one at 60 fps, two at 30, three
+    // at 20. Timer jitter must not turn one step into a full step plus a sliver.
+    const total = Math.min(0.1, dt);
+    const steps = Math.max(1, Math.round(total * 60));
+    const step = total / steps;
+    for (let i = 0; total > 0 && i < steps; i++) {
+      time += step;
       waterTime.value = time;
-      food.update(dt, time);
-      fish.update(dt, time, pointer);
+      food.update(step, time);
+      fish.update(step, time, pointer);
     }
     if (pointer && now - lastPointerTime > 60)
       pointer.velocity.multiplyScalar(Math.exp(-dt * 12));
+    const refreshShadow = forceShadows || time - lastShadowTime + 1e-7 >= 1 / settings.shadowHz;
+    renderer.shadowMap.needsUpdate = refreshShadow;
+    if (refreshShadow) {
+      lastShadowTime = time;
+      forceShadows = false;
+      shadowFrames++;
+    }
+    renderer.info.reset();
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
     renderer.render(postScene, postCamera);
+    renderedFrames++;
     if (!ready) {
       ready = true;
       loading.style.opacity = 0;
-      setTimeout(() => {
-        loading.hidden = true;
-      }, 850);
+      setTimeout(() => { loading.hidden = true; }, 850);
     }
   }
-  requestAnimationFrame(frame);
+  loop = createFrameLoop(renderFrame, {
+    fps: requestedRate, paused, hidden: document.hidden || zeroSize || contextLost,
+  });
+  window.habitatStats = () => ({
+    profile, onBattery, resolution: settings.resolution,
+    framebuffer: [target.width, target.height], samples: target.samples,
+    shadowSize: settings.shadowSize,
+    shadowHz: Number.isFinite(settings.shadowHz) ? settings.shadowHz : "per-frame",
+    renderedFrames, shadowFrames, simulationTime: time,
+    drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
+    plants: { ...plants.stats }, loop: loop.state,
+  });
+  // Diagnostics are opt-in: no timing queries, synchronization or arrays in normal use.
+  if (query.get("diagnostics") === "1") {
+    const { installDiagnostics } = await import("./diagnostics.js");
+    installDiagnostics({ renderer, loop, renderFrame, stats: window.habitatStats });
+  }
+  window.addEventListener("pagehide", () => {
+    loop.setHidden(true);
+  });
+  window.addEventListener("pageshow", visibility);
+
 }
 
 start().catch(fail);

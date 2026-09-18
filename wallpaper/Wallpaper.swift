@@ -290,6 +290,12 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// since decided otherwise.
   private var stopped =
     UserDefaults.standard.object(forKey: "paused") as? Bool ?? reduceMotion
+  /// The fastest clearly-visible drawing may go, chosen from the Frame Rate menu.
+  /// Lower is cooler and quieter. Like the paused choice, it outlives a restart.
+  /// Only values the menu itself writes are ever stored, so no clamping is needed
+  /// on the way in.
+  private var maxFps = UserDefaults.standard.object(forKey: "maxFps") as? Int ?? 60
+  private let fpsMenu = NSMenu()
   private var lowPower: Bool { ProcessInfo.processInfo.isLowPowerModeEnabled }
   /// Reduce Motion is a durable choice about the whole machine, not a passing shortage
   /// like Low Power Mode, so it decides how the wallpaper starts and never more than that:
@@ -399,7 +405,10 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// Power depends on the machine and display; it must be measured on the target Mac.
   func applyRate() {
     let battery = onBattery
-    let full = battery ? 30 : 60
+    // A sustained 60 fps never lets the GPU idle, which is what spins a laptop fan:
+    // every display renders the scene separately. A lower menu setting halves the
+    // work and leaves idle time between frames. Battery never exceeds 30, as before.
+    let full = battery ? min(maxFps, 30) : maxFps
     let still = stopped || lowPower || !awake
     // Read the window list once for all displays, and never while deliberately still.
     let blockers = still ? [] : windowBlockers()
@@ -509,6 +518,16 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     pause.target = self
     pause.action = #selector(togglePause)
     menu.addItem(pause)
+    let fps = NSMenuItem(title: "Frame Rate", action: nil, keyEquivalent: "")
+    for rate in [60, 30, 20] {
+      let option = NSMenuItem(
+        title: "\(rate) fps", action: #selector(setMaxFps(_:)), keyEquivalent: "")
+      option.target = self
+      option.representedObject = rate
+      fpsMenu.addItem(option)
+    }
+    fps.submenu = fpsMenu
+    menu.addItem(fps)
     menu.addItem(.separator())
     let leave = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
     leave.target = self
@@ -541,6 +560,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Food that nothing is going to draw would sit in still water until the tank started
     // again and then all arrive at once, so Feed says so rather than promising a feeding.
     feed.isEnabled = applied > 0
+    for option in fpsMenu.items {
+      option.state = (option.representedObject as? Int == maxFps) ? .on : .off
+    }
   }
 
   /// Every screen, because each one runs its own tank with its own fish rather than one
@@ -553,6 +575,15 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   @objc private func togglePause() {
     stopped.toggle()
     UserDefaults.standard.set(stopped, forKey: "paused")
+    applyRate()
+  }
+
+  @objc private func setMaxFps(_ sender: NSMenuItem) {
+    guard let rate = sender.representedObject as? Int, [60, 30, 20].contains(rate) else {
+      return
+    }
+    maxFps = rate
+    UserDefaults.standard.set(rate, forKey: "maxFps")
     applyRate()
   }
 

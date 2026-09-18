@@ -50,11 +50,11 @@ It uses more power than a still wallpaper because it renders a 3D scene. The amo
 
 The optimized build thins the rear rivergrass by about 30%, reduces oversampling and shadow work, and fully stops the render loop when paused or hidden. It keeps 4× multisampling, the HDR lighting, all 24 fish and the foreground planting. On an M5 Pro this halves the GPU time per frame; battery drain has not been measured.
 
-The wallpaper keeps the same frame-rate limits, so rendering improvements are not spent on extra frames:
+The wallpaper caps the frame rate, so rendering improvements are not spent on extra frames. The Frame Rate menu chooses the clearly-visible limit: 60 fps by default, 30 or 20 for cooler and quieter running.
 
 | Desktop state | Rendering |
 | --- | --- |
-| Clearly visible, plugged in | Up to 60 fps |
+| Clearly visible, plugged in | Up to the chosen limit |
 | Clearly visible, on battery | Up to 30 fps |
 | Mostly covered by windows | Up to 20 fps |
 | Almost entirely covered | Stopped |

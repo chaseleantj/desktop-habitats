@@ -182,6 +182,15 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
       "typeof aquariumRate === 'function' && aquariumRate(\(rate))")
   }
 
+  /// A pinch of food on the water, asked for from the menu rather than by clicking. The
+  /// window never takes a mouse event, so there is no cursor position to drop it at: the
+  /// page picks its own spot on the surface. Nothing is sent while the scene is stopped,
+  /// where the food would only pile up unseen until it started again.
+  func feed() {
+    guard loaded, rate > 0 else { return }
+    view.evaluateJavaScript("typeof aquariumFeed === 'function' && aquariumFeed()")
+  }
+
   /// A cursor position in this screen's coordinates, or nil when the cursor left it.
   func setPointer(_ point: NSPoint?) {
     guard loaded, rate > 0 else { return }
@@ -254,10 +263,22 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var status: NSStatusItem?
   private let state = NSMenuItem()
   private let pause = NSMenuItem()
+  private let feed = NSMenuItem()
   private var applied = 0
   /// The choice outlives a restart, so a paused tank is still paused after logging in.
-  private var stopped = UserDefaults.standard.bool(forKey: "paused")
+  /// Until one has been made there is nothing under the key at all, which is what lets a
+  /// machine that asks for less motion start still without overruling anybody who has
+  /// since decided otherwise.
+  private var stopped =
+    UserDefaults.standard.object(forKey: "paused") as? Bool ?? reduceMotion
   private var lowPower: Bool { ProcessInfo.processInfo.isLowPowerModeEnabled }
+  /// Reduce Motion is a durable choice about the whole machine, not a passing shortage
+  /// like Low Power Mode, so it decides how the wallpaper starts and never more than that:
+  /// somebody who installed an animated wallpaper is allowed to want it anyway.
+  private static var reduceMotion: Bool {
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+  }
+  private var reduceMotion: Bool { Controller.reduceMotion }
 
   func applicationDidFinishLaunching(_ note: Notification) {
     Controller.shared = self
@@ -295,6 +316,17 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     NotificationCenter.default.addObserver(
       forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
     ) { [weak self] _ in self?.applyRate() }
+
+    // Turning Reduce Motion on mid-session stops the water for the same reason it starts
+    // stopped under it, unless the tank has already been asked for deliberately.
+    workspace.addObserver(
+      forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self, UserDefaults.standard.object(forKey: "paused") == nil else { return }
+      self.stopped = self.reduceMotion
+      self.applyRate()
+    }
 
     // Running on the battery halves the frame rate; the scene is slow enough to hold up.
     if let source = IOPSNotificationCreateRunLoopSource({ _ in
@@ -421,6 +453,10 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     state.isEnabled = false
     menu.addItem(state)
     menu.addItem(.separator())
+    feed.title = "Feed"
+    feed.target = self
+    feed.action = #selector(feedFish)
+    menu.addItem(feed)
     pause.target = self
     pause.action = #selector(togglePause)
     menu.addItem(pause)
@@ -442,7 +478,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
       lowPower
       ? "Still, for Low Power Mode"
       : stopped
-        ? "Paused"
+        ? reduceMotion ? "Paused, for Reduce Motion" : "Paused"
         : !awake
           ? "Still, the screen is off"
           : applied == 0
@@ -450,7 +486,19 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Running at \(applied) frames a second"
     pause.title = stopped ? "Resume" : "Pause"
     // In Low Power Mode nothing is going to draw, so the item would be a false promise.
+    // Reduce Motion is not the same case: the machine can perfectly well draw, it has
+    // merely been asked not to, and Resume is how somebody says they want this one anyway.
     pause.isEnabled = !lowPower
+    // Food that nothing is going to draw would sit in still water until the tank started
+    // again and then all arrive at once, so Feed says so rather than promising a feeding.
+    feed.isEnabled = applied > 0
+  }
+
+  /// Every screen, because each one runs its own tank with its own fish rather than one
+  /// scene stretched across them: feeding only the screen the menu bar happens to be on
+  /// would leave the others watching an unfed aquarium.
+  @objc private func feedFish() {
+    for screen in screens { screen.feed() }
   }
 
   @objc private func togglePause() {

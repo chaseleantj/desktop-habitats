@@ -2,21 +2,40 @@ import * as THREE from "three";
 import { createEnvironment, createParticles } from "./environment.js";
 import { createPlants } from "./plants.js";
 import { createFishSchool } from "./fish.js";
+import { createFood } from "./food.js";
+import { randomGenerator } from "./math.js";
 import { waterTime } from "./water.js";
 
 const canvas = document.querySelector("#scene");
 const aquarium = document.querySelector("#aquarium");
 const loading = document.querySelector("#loading");
-let paused = matchMedia("(prefers-reduced-motion: reduce)").matches;
+// A page that says the host owns its motion leaves the system's reduced-motion
+// preference to the host, which is the only one that can offer a way back: the wallpaper
+// sits at the desktop window level and never sees a key, so a preview's Space would never
+// reach it and the water would be frozen for good. The preview keeps the preference
+// itself, where Space can clear it.
+let paused =
+  document.documentElement.dataset.motion !== "host" &&
+  matchMedia("(prefers-reduced-motion: reduce)").matches;
 // The preview renders at 1.5 times its canvas. A host page can ask for a different
-// number of pixels; the wallpaper matches the screen exactly.
+// number of pixels; the wallpaper asks for one per screen pixel, never sampling below
+// the preview's own 1.5.
 const resolution = Number(document.documentElement.dataset.resolution) || 1.5;
 
 // The wallpaper host sets the frame rate: lower on battery, and none at all while the
-// desktop is covered, when drawing the scene would only cost power.
+// desktop is covered, when drawing the scene would only cost power. A rate of none is
+// already a full stop, since the frame loop turns back before the clock advances.
 let interval = 0;
 window.aquariumRate = (fps) => {
   interval = fps > 0 ? 1000 / fps - 1.5 : Infinity;
+};
+// A pinch of food, for a host with no pointer to click with. Defined before the scene
+// exists and harmless until it does. Nothing is dropped into water that is not moving,
+// whichever of the two reasons it is still for: pellets nobody is drawing are pellets the
+// fish never see, and they would all arrive at once whenever the water started again.
+let sprinkle = null;
+window.aquariumFeed = () => {
+  if (sprinkle && !paused && interval !== Infinity) sprinkle();
 };
 
 function fail(error) {
@@ -119,10 +138,12 @@ async function start() {
   scene.add(backboard);
   const { obstacles, landmarks } = await createEnvironment(scene);
   const plants = createPlants(scene);
+  const food = createFood(scene, { thickets: plants.thickets });
   const fish = createFishSchool(scene, {
     obstacles,
     landmarks,
     thickets: plants.thickets,
+    food,
   });
   const particles = createParticles(scene, { thickets: plants.thickets });
 
@@ -217,6 +238,33 @@ async function start() {
     pointer = null;
   });
 
+  // Clicking the water drops a pinch of food where the click was. The ray is cast again
+  // here rather than reusing the hovering pointer, because a touch or a pen presses
+  // before it ever moves and there would be nothing to reuse. Only the horizontal place
+  // is taken from the click: food is sprinkled onto the surface wherever it landed, and
+  // how far back in the tank each pellet falls is food.js's own business, since a click
+  // can only ever say two of the three things.
+  const dropPoint = new THREE.Vector3();
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || !event.isPrimary || paused) return;
+    const bounds = canvas.getBoundingClientRect();
+    raycaster.setFromCamera(
+      new THREE.Vector2(
+        ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        (-(event.clientY - bounds.top) / bounds.height) * 2 + 1,
+      ),
+      camera,
+    );
+    if (raycaster.ray.intersectPlane(waterPlane, dropPoint)) food.drop(dropPoint);
+  });
+  // The same pinch without a click, for the wallpaper's menu: the cursor is up in the
+  // menu bar at that moment, so the food goes over the open middle of the tank instead,
+  // in a different place each time.
+  const scatter = randomGenerator(715249);
+  sprinkle = () => {
+    food.drop(dropPoint.set(-3.6 + scatter() * 7.2, 0, 0));
+  };
+
   function fullscreen() {
     if (document.fullscreenElement) document.exitFullscreen();
     else
@@ -248,6 +296,7 @@ async function start() {
     if (!paused) {
       time += dt;
       waterTime.value = time;
+      food.update(dt, time);
       fish.update(dt, time, pointer);
     }
     if (pointer && now - lastPointerTime > 60)

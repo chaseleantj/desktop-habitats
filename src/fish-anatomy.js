@@ -23,8 +23,10 @@ import { waterLitShader } from "./water.js";
 // supplies vSkinPoint (rest position), vFishUV and vFishPart to the skin shader.
 
 const TAU = Math.PI * 2;
-const SNOUT_X = 0.35;
-const STANDARD_LENGTH = 0.645;
+// Exported because behaviour needs them: a fish eats with its snout, not its centre, and
+// every feeding distance in fish.js is quoted in body lengths.
+export const SNOUT_X = 0.35;
+export const STANDARD_LENGTH = 0.645;
 const HYPURAL_X = SNOUT_X - STANDARD_LENGTH;
 
 // Cross-sections: x, dorsal y, ventral y, half width, then the fullness exponents of

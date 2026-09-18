@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { groundHeight, smoothstep } from "./math.js";
 
 // One clock and one water model for everything the water touches: the current
 // that bends plants, carries debris and pushes the fish, and the light refracted
@@ -7,14 +8,26 @@ export const waterTime = { value: 0 };
 export const SURFACE_Y = 10;
 export const FLOW_DIRECTION = new THREE.Vector3(1, 0, 0.22).normalize();
 
-// Filter return runs left to right with a slight drift toward the front glass. A slow
-// pressure wave travels across the tank so neighbours respond in turn, and finer eddies
-// keep any two strands from moving in lockstep. Strength is the flow as a multiple of the
-// design flow; the water moves CURRENT_SPEED scene units per second per unit of strength.
-// A scene unit is about six centimetres, so the mean flow in the open water is about a
-// centimetre and a half a second, the gentle return of a planted tank.
+// Flow runs along FLOW_DIRECTION, left to right with a slight drift toward the front
+// glass -- but the return sweeps through its arc instead of pointing one way forever, so
+// the strength is signed and goes negative when the water is running back again. A tank
+// whose return never moves has one permanent downstream corner that every light thing
+// ends up in, which is both wrong for a planted tank and dull to watch.
+//
+// The sweep is far slower than anything else in the scene, a little over three minutes
+// end to end, so at any one moment the water still reads as a steady drift and only a
+// long sit reveals the turn. Twice a cycle it passes through slack, where the eddies are
+// all that is left and different corners of the tank briefly disagree about which way
+// they are going. On top of the sweep a slow pressure wave travels across the tank so
+// neighbours respond in turn, and finer eddies keep any two strands from moving in
+// lockstep.
+//
+// Strength is the flow as a multiple of the design flow; the water moves CURRENT_SPEED
+// scene units per second per unit of strength. A scene unit is about six centimetres, so
+// the open water peaks near a centimetre and three quarters a second and averages about
+// a centimetre, the gentle return of a planted tank.
 const CURRENT = {
-  mean: 0.31,
+  sweep: { amplitude: 0.34, rate: 0.031 },
   waves: [
     { amplitude: 0.15, rate: 0.055, kx: -0.34, kz: -0.19 },
     { amplitude: 0.03, rate: 0.235, kx: 1.7, kz: 1.1 },
@@ -27,28 +40,63 @@ const vec3 = (v) => `vec3(${v.x.toFixed(4)}, ${v.y.toFixed(4)}, ${v.z.toFixed(4)
 const number = (v) => (Number.isInteger(v) ? `${v}.0` : `${v}`);
 const wavePhase = ({ rate, kx, kz }) =>
   `t * ${number(rate)} + p.x * ${number(kx)} + p.z * ${number(kz)}`;
+const sweepPhase = `t * ${number(CURRENT.sweep.rate)}`;
 
 export const currentGLSL = /* glsl */ `
   uniform float waterTime;
   const vec3 FLOW_DIRECTION = ${vec3(FLOW_DIRECTION)};
   float currentStrength(vec3 p, float t) {
-    return ${number(CURRENT.mean)}
+    return ${number(CURRENT.sweep.amplitude)} * sin(${sweepPhase})
       ${CURRENT.waves.map((w) => `+ ${number(w.amplitude)} * sin(${wavePhase(w)})`).join("\n      ")};
   }
   // Time integral of the strength: how far, in strength-seconds, the water at p has
-  // carried anything riding it since t = 0.
+  // carried anything riding it since t = 0. With the sweep this no longer grows without
+  // bound -- it swings about a fixed offset, so anything riding the current returns to
+  // where it started rather than being carried away for good.
   float currentTravel(vec3 p, float t) {
-    return ${number(CURRENT.mean)} * t
+    return ${number(-CURRENT.sweep.amplitude / CURRENT.sweep.rate)} * cos(${sweepPhase})
       ${CURRENT.waves.map((w) => `- ${number(w.amplitude / w.rate)} * cos(${wavePhase(w)})`).join("\n      ")};
   }
 `;
 
 // The same field on the CPU: the water velocity at p, written into `out`.
 export function currentVelocity(p, t, out) {
-  let strength = CURRENT.mean;
+  let strength = CURRENT.sweep.amplitude * Math.sin(t * CURRENT.sweep.rate);
   for (const { amplitude, rate, kx, kz } of CURRENT.waves)
     strength += amplitude * Math.sin(t * rate + p.x * kx + p.z * kz);
   return out.copy(FLOW_DIRECTION).multiplyScalar(strength * CURRENT_SPEED);
+}
+
+// Which way the water is actually running at p, as a unit vector, for anything that needs
+// to point upstream. Callers cannot use FLOW_DIRECTION for this any more: it is the axis
+// the flow runs along, not the way it is going. At slack water the local flow is only
+// eddies and its sign means nothing, so the nominal axis is handed back instead.
+export function flowDirectionAt(p, t, out) {
+  currentVelocity(p, t, out);
+  return out.lengthSq() > 1e-4 ? out.normalize() : out.copy(FLOW_DIRECTION);
+}
+
+// A grass bed's footprint, where the foliage takes the flow. Beds are passed in rather
+// than imported so a scene built without planting still works.
+export const thicketAt = (thickets, p) =>
+  thickets.find(
+    (bed) =>
+      p.x > bed.minX &&
+      p.x < bed.maxX &&
+      p.z > bed.minZ &&
+      p.z < bed.maxZ &&
+      p.y < bed.maxY,
+  );
+
+// The current anything drifting in the tank actually feels: the open-water field slowed
+// in the boundary layer over the sand and again inside the grass. Fish and sinking food
+// must share this, or food would drift off at a different angle from the fish chasing it.
+export function shelteredVelocity(p, t, out, thickets) {
+  currentVelocity(p, t, out);
+  const height = p.y - groundHeight(p.x, p.z);
+  let shelter = 0.3 + 0.7 * smoothstep(0, 1.4, height);
+  if (thicketAt(thickets, p)) shelter *= 0.35;
+  return out.multiplyScalar(shelter);
 }
 
 // Light entering through a gently rippled surface is focused and defocused below it, and

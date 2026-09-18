@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { underwater } from './water.js';
-import { merge, tint } from './geometry.js';
+import { merge } from './geometry.js';
 
-const color=c=>new THREE.Color(c);
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 const n=x=>Number(x).toFixed(5);
 function part(g,id) {g.setAttribute('part',new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(id),1));return g;}
@@ -17,48 +16,73 @@ function join(parts) {
 }
 
 // The snout sits at +SNOUT and the hypural plate at SNOUT-len; u runs 0 at the snout to
-// 1 there. `back` and `belly` are the half-heights above and below the spine and `half`
-// the half-width, at the knots below. Amphiprion percula is a short deep oval about half
-// as deep as it is long; Chromis viridis is a shorter ovate damsel, thin enough to
-// vanish edge-on; Pseudanthias squamipinnis is the elongate fusiform of the three.
-// Part ids: 0 body, 1 median fin, 2 paired fin, 3 eye.
+// 1 there, so `len` is standard length and the caudal fin hangs off its back end. `back`
+// and `belly` are the half-heights above and below the spine, `half` the half-width, at
+// the knots below, and `scales` the scale rows along and around the flank.
+// Depths are measured ones where the literature has them: Pseudanthias squamipinnis has
+// a fineness ratio of 2.68±0.07 (Frontiers in Marine Science 2023, Gulf of Eilat flume
+// work), so its depth is len/2.68. Amphiprion percula is the deep one at about half its
+// length, Chromis viridis a shallower ovate damsel, thin enough to vanish edge-on.
+// Part ids: 0 body, 1 median fin, 2 pectoral, 3 pelvic, 4 eye.
 const SNOUT=.54,RAYS=11;
 const KNOTS=[0,.05,.12,.20,.30,.42,.55,.68,.80,.90,1];
 const SPECIES={
   clown:{
     len:.98,
-    back:[.014,.086,.150,.198,.226,.232,.218,.184,.136,.086,.048],
-    belly:[.016,.090,.154,.204,.234,.238,.216,.170,.116,.070,.040],
-    half:[.007,.042,.064,.076,.084,.082,.074,.058,.040,.025,.015],
-    eye:{u:.135,v:.34,r:.038},fin:'#e2610f',
-    dorsal:{from:.200,to:.860,sink:.014,reach:[.046,.098,.112,.104,.086,.108,.110,.078,.030]},
-    anal:{from:.600,to:.880,sink:.012,reach:[.036,.094,.104,.078,.030]},
-    caudal:[[-.612,.150,0],[-.684,.196,0],[-.746,.176,0],[-.780,.104,0],[-.792,0,0],[-.780,-.102,0],[-.746,-.172,0],[-.684,-.192,0],[-.612,-.148,0]],
-    pectoral:{base:[[.275,.30],[.305,.00],[.335,-.30]],tip:[[.365,.018,.096],[.428,-.024,.118],[.466,-.100,.110],[.436,-.160,.084],[.372,-.146,.058]]},
-    pelvic:{base:[[.365,-.88],[.400,-.98]],tip:[[.430,-.300,.038],[.500,-.366,.046],[.552,-.312,.030]]},
+    back:[.016,.098,.170,.214,.238,.242,.224,.186,.134,.082,.045],
+    belly:[.018,.100,.174,.222,.248,.248,.222,.172,.114,.066,.038],
+    half:[.008,.044,.068,.080,.086,.084,.075,.058,.039,.024,.014],
+    eye:{u:.130,v:.34,r:.044},scales:[34,13],cheek:.22,veil:[.97,.82],
+    // Nine or ten dorsal spines, and percula's spinous dorsal is the low one — 3.0–3.4 in
+    // head length, against a taller anterior fin in ocellaris, which is how the two are
+    // separated on a photograph. The soft lobe behind the notch is the fin's high point.
+    dorsal:{from:.195,to:.855,sink:.016,reach:[.050,.086,.080,.072,.070,.104,.114,.082,.026]},
+    anal:{from:.605,to:.880,sink:.013,reach:[.038,.092,.100,.074,.026]},
+    // Rounded caudal, a little under a quarter of standard length: the fan on a percula is
+    // short, not the long paddle a generic fish model gives it.
+    caudal:[[-.578,.148,0],[-.638,.174,0],[-.678,.156,0],[-.700,.092,0],[-.708,0,0],[-.700,-.090,0],[-.678,-.154,0],[-.638,-.172,0],[-.578,-.146,0]],
+    // The pectoral is the engine, not a trim tab: percula rows with it at 2.4–4.6 Hz and
+    // only adds the tail above about three body lengths a second (J. Exp. Biol. 2019).
+    pectoral:{base:[[.272,.32],[.305,.00],[.338,-.32]],tip:[[.378,.022,.108],[.456,-.030,.134],[.508,-.116,.124],[.468,-.184,.094],[.388,-.166,.064]]},
+    pelvic:{base:[[.365,-.88],[.400,-.98]],tip:[[.432,-.316,.040],[.508,-.392,.048],[.566,-.330,.032]]},
   },
   chromis:{
     len:.82,
-    back:[.020,.112,.170,.190,.196,.190,.170,.136,.098,.064,.037],
-    belly:[.022,.112,.166,.186,.192,.184,.158,.120,.082,.054,.031],
-    half:[.008,.035,.048,.055,.057,.055,.049,.039,.027,.018,.011],
-    eye:{u:.115,v:.33,r:.040},fin:'#8ec3ca',
-    dorsal:{from:.215,to:.800,sink:.011,reach:[.032,.066,.072,.074,.078,.090,.100,.072,.026]},
-    anal:{from:.580,to:.830,sink:.010,reach:[.028,.072,.086,.066,.024]},
-    caudal:[[-.620,.190,0],[-.590,.140,0],[-.546,.092,0],[-.496,.044,0],[-.462,0,0],[-.496,-.042,0],[-.546,-.090,0],[-.590,-.138,0],[-.620,-.188,0]],
-    pectoral:{base:[[.255,.30],[.285,.00],[.315,-.30]],tip:[[.345,.015,.062],[.405,-.020,.076],[.442,-.086,.072],[.416,-.134,.054],[.356,-.124,.038]]},
+    // Sources disagree on depth — 35–38% of standard length in the measured Lakshadweep
+    // series, nearer 48% in the classic literature — so this takes 40%, which is what a
+    // live fish photographs at. The peduncle stays deep at 16%, the eye 8.5%.
+    back:[.016,.074,.132,.158,.166,.162,.146,.118,.086,.068,.046],
+    belly:[.018,.078,.134,.156,.162,.156,.134,.102,.070,.062,.042],
+    half:[.007,.029,.039,.044,.045,.043,.038,.030,.021,.015,.010],
+    eye:{u:.112,v:.32,r:.035},scales:[26,10],cheek:.11,veil:[.56,.22],
+    // Twelve spines then nine to eleven soft rays in one continuous fin. Spread, the
+    // spinous half's upper edge is a perfectly straight line — a damsel's dorsal, not a
+    // sail — and the soft lobe behind it is barely higher.
+    dorsal:{from:.200,to:.815,sink:.011,reach:[.030,.062,.062,.062,.062,.070,.086,.058,.018]},
+    anal:{from:.575,to:.830,sink:.010,reach:[.028,.066,.078,.058,.018]},
+    // Broadly forked, concavity about 18% of standard length, the lobes tapering to points
+    // that hook inward toward the fork. They do not run out into filaments: that, and the
+    // blackish outer caudal margin, belong to C. atripectoralis.
+    caudal:[[-.556,.196,0],[-.508,.140,0],[-.452,.088,0],[-.408,.042,0],[-.386,0,0],[-.408,-.041,0],[-.452,-.086,0],[-.508,-.138,0],[-.556,-.194,0]],
+    pectoral:{base:[[.252,.30],[.285,.00],[.318,-.30]],tip:[[.350,.016,.066],[.418,-.024,.082],[.460,-.094,.078],[.428,-.144,.056],[.360,-.130,.040]]},
     pelvic:{base:[[.345,-.88],[.380,-.98]],tip:[[.410,-.238,.028],[.472,-.292,.034],[.518,-.246,.022]]},
   },
   anthias:{
     len:1.14,
-    back:[.011,.072,.130,.170,.192,.195,.182,.152,.110,.070,.038],
-    belly:[.012,.074,.128,.168,.190,.190,.170,.134,.092,.056,.032],
-    half:[.006,.032,.050,.060,.064,.062,.055,.043,.030,.019,.011],
-    eye:{u:.118,v:.35,r:.036},fin:'#e4a94e',
-    dorsal:{from:.180,to:.860,sink:.011,reach:[.040,.088,.100,.092,.086,.096,.104,.076,.030]},
-    anal:{from:.600,to:.880,sink:.010,reach:[.032,.086,.096,.072,.028]},
-    caudal:[[-.860,.225,0],[-.806,.160,0],[-.760,.104,0],[-.722,.050,0],[-.700,0,0],[-.722,-.048,0],[-.760,-.102,0],[-.806,-.158,0],[-.860,-.223,0]],
-    pectoral:{base:[[.250,.30],[.280,.00],[.310,-.30]],tip:[[.340,.018,.068],[.402,-.022,.084],[.442,-.096,.080],[.412,-.150,.060],[.348,-.136,.042]]},
+    back:[.011,.060,.126,.180,.208,.212,.194,.160,.114,.070,.037],
+    belly:[.012,.064,.128,.182,.210,.210,.186,.144,.096,.056,.031],
+    half:[.006,.033,.052,.062,.066,.064,.056,.043,.029,.018,.010],
+    eye:{u:.118,v:.34,r:.046},scales:[40,15],cheek:.10,veil:[.99,.80],
+    // Ten spines and fifteen to seventeen soft rays make a long, low, even-topped dorsal;
+    // the third spine is drawn out in both sexes and greatly so in the terminal male.
+    dorsal:{from:.175,to:.865,sink:.012,reach:[.044,.072,.078,.074,.072,.082,.092,.068,.024]},
+    // Three spines and only six or seven rays: the anal fin is short-based and set well
+    // back, nothing like the long anal the dorsal would suggest.
+    anal:{from:.640,to:.855,sink:.011,reach:[.034,.082,.094,.070,.024]},
+    // Lunate in both sexes — the species' common name in the trade is lyretail — with the
+    // lobes drawn into filaments on the male by the vertex shader below.
+    caudal:[[-.940,.250,0],[-.876,.176,0],[-.814,.112,0],[-.758,.052,0],[-.726,0,0],[-.758,-.050,0],[-.814,-.110,0],[-.876,-.174,0],[-.940,-.248,0]],
+    pectoral:{base:[[.248,.30],[.282,.00],[.316,-.30]],tip:[[.348,.020,.074],[.416,-.026,.092],[.462,-.106,.088],[.428,-.166,.066],[.356,-.148,.046]]},
     pelvic:{base:[[.340,-.88],[.375,-.98]],tip:[[.408,-.268,.032],[.476,-.336,.038],[.526,-.284,.024]]},
   },
 };
@@ -75,11 +99,13 @@ function section(kind,u) {
 /** Surface point at axial fraction u and angle a, a=0 on the dorsal midline.
  *  Fullness above 1 pinches the section toward a ridge at the back and a softer keel at
  *  the belly, which is what a laterally compressed fish's cross-section actually does;
- *  the gill chamber swells the cheek so the head is not a cone. */
+ *  the gill chamber swells the cheek so the head is not a cone. percula's cheek swells
+ *  hardest: seen head-on its face bulges, which is one of the marks that separates it
+ *  from the flat-headed ocellaris. */
 function sectionPoint(kind,u,a,out=V()) {
   const s=section(kind,u),v=Math.cos(a),lateral=Math.sin(a);
   const full=.95+.48*Math.pow(Math.max(0,v),1.6)+.40*Math.pow(Math.max(0,-v),1.6);
-  const cheek=1+.13*Math.exp(-(((u-.155)/.072)**2))*(.5-v*.5);
+  const cheek=1+SPECIES[kind].cheek*Math.exp(-(((u-.155)/.072)**2))*(.5-v*.5);
   const width=s.half*cheek*Math.pow(Math.abs(lateral),full)*Math.sign(lateral);
   return out.set(axis(kind,u),v>=0?v*s.top:v*s.bottom,width);
 }
@@ -108,7 +134,7 @@ function bodyGeometry(kind) {
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.setIndex(index);g.computeVertexNormals();tint(g,()=>color('#ffffff'));return part(g,0);
+  g.setIndex(index);g.computeVertexNormals();return part(g,0);
 }
 
 /** A fin is a sheet lofted from its insertion line in the skin to its free margin.
@@ -116,21 +142,20 @@ function bodyGeometry(kind) {
  *  shader draws the rays, the pigment gradient and the membrane's thinning from those.
  *  The membrane falls short of the ray tips between rays, which is what makes a real
  *  fin's edge finely scalloped rather than a clean arc. */
-function fin(base,tip,c,id,columns,steps=5) {
+function fin(base,tip,id,columns,steps=5) {
   const hinge=new THREE.CatmullRomCurve3(base.map(k=>V(...k))),margin=new THREE.CatmullRomCurve3(tip.map(k=>V(...k)));
-  const p=[],uv=[],cols=[],index=[],a=V(),b=V(),q=V(),tone=color(c),root=tone.clone().multiplyScalar(.74);
+  const p=[],uv=[],index=[],a=V(),b=V(),q=V();
   for(let i=0;i<=columns;i++) {
     const s=i/columns;hinge.getPoint(s,a);margin.getPoint(s,b);
     const reach=1-.034*Math.pow(.5-.5*Math.cos(Math.PI*2*s*RAYS),1.4);
     for(let j=0;j<=steps;j++) {
       const t=j/steps;q.lerpVectors(a,b,t*reach);p.push(q.x,q.y,q.z);uv.push(s,t);
-      const cc=root.clone().lerp(tone,Math.min(1,t*1.7));cols.push(cc.r,cc.g,cc.b);
       if(i<columns&&j<steps){const k=i*(steps+1)+j;index.push(k,k+1,k+steps+1,k+1,k+steps+2,k+steps+1);}
     }
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));g.setIndex(index);g.computeVertexNormals();return part(g,id);
+  g.setIndex(index);g.computeVertexNormals();return part(g,id);
 }
 // Median fins hinge a little inside the dorsal or ventral margin, so the membrane grows
 // out of the skin instead of balancing on it. Both curves are sampled at the same
@@ -157,17 +182,17 @@ function eyeSeat(kind) {
 function eye(kind,side) {
   const e=eyeSeat(kind),g=new THREE.SphereGeometry(1,10,6);
   g.scale(e.r,e.r*1.05,e.r*.44);g.translate(e.x,e.y,side*e.z);
-  tint(g,()=>color('#ffffff'));return part(g,3);
+  return part(g,4);
 }
 
 export function makeFishGeometry(kind='clown') {
   const s=SPECIES[kind],parts=[bodyGeometry(kind)];
-  parts.push(fin(...median(kind,s.dorsal,true),s.fin,1,20));
-  parts.push(fin(...median(kind,s.anal,false),s.fin,1,13));
-  parts.push(fin(hypural(kind),s.caudal,s.fin,1,22));
+  parts.push(fin(...median(kind,s.dorsal,true),1,20));
+  parts.push(fin(...median(kind,s.anal,false),1,13));
+  parts.push(fin(hypural(kind),s.caudal,1,22));
   for(const side of [-1,1]) {
-    parts.push(fin(s.pectoral.base.map(([u,v])=>skinPoint(kind,u,v,side)),s.pectoral.tip.map(([u,y,z])=>[axis(kind,u),y,side*z]),s.fin,2,10,4));
-    parts.push(fin(s.pelvic.base.map(([u,v])=>skinPoint(kind,u,v,side)),s.pelvic.tip.map(([u,y,z])=>[axis(kind,u),y,side*z]),s.fin,2,7,3));
+    parts.push(fin(s.pectoral.base.map(([u,v])=>skinPoint(kind,u,v,side)),s.pectoral.tip.map(([u,y,z])=>[axis(kind,u),y,side*z]),2,10,4));
+    parts.push(fin(s.pelvic.base.map(([u,v])=>skinPoint(kind,u,v,side)),s.pelvic.tip.map(([u,y,z])=>[axis(kind,u),y,side*z]),3,7,3));
     parts.push(eye(kind,side));
   }
   return join(parts);
@@ -178,56 +203,117 @@ export function makeFishGeometry(kind='clown') {
 // fraction from the dorsal midline (0) to the ventral (1).
 const SKIN={
   clown:`
-    vec3 skin=mix(vec3(.66,.115,.006),vec3(1.00,.290,.012),smoothstep(.05,.44,band));
-    skin=mix(skin,vec3(1.00,.470,.070),smoothstep(.64,.96,band));
-    // Three bars: the head bar behind the eye, the mid bar with the forward-pointing
-    // wedge that marks percula, the caudal bar on the peduncle. Each is a white core
-    // inside a heavy black edge, which is the species' single loudest feature.
-    float b1=abs(u-(.212+.034*band));
-    float b2=abs(u-(.505-.082*exp(-pow((band-.46)/.27,2.))));
-    float d=min(min(b1-.044,b2-.056),abs(u-.852)-.026);
-    float aa=max(fwidth(d),.0012);
-    skin=mix(skin,vec3(.013,.019,.023),1.-smoothstep(.021-aa,.021+aa,d));
-    skin=mix(skin,vec3(.90,.895,.845),1.-smoothstep(-aa,aa,d));`,
+    // Orange from xanthophores across the whole flank, only a shade deeper along the back.
+    vec3 skin=mix(vec3(.74,.125,.005),vec3(1.00,.270,.010),smoothstep(.06,.46,band));
+    skin=mix(skin,vec3(1.00,.420,.060),smoothstep(.66,.98,band));
+    // Three bars, in the rostro-caudal order a settling juvenile grows them: the head bar
+    // behind the eye leaning forward at the throat, the trunk bar with the forward wedge
+    // that marks percula, the peduncle bar. The white is a guanine iridophore plate and
+    // the black edge is the melanophore band those iridophores position, so the two are
+    // one feature and are drawn from one signed distance.
+    float b1=abs(u-(.246-.048*band))-.042;
+    float b2=abs(u-(.520-.104*exp(-pow((band-.46)/.215,2.))))-.058;
+    float d=min(min(b1,b2),abs(u-.872)-.030);
+    // percula carries thick black borders where ocellaris has a hairline or none at all,
+    // and the black broadens with age: the big female in a group is the blackest fish.
+    float edge=.020+.018*vTrim.x,aa=max(fwidth(d),.0012);
+    skin=mix(skin,vec3(.009,.012,.016),1.-smoothstep(edge-aa,edge+aa,d));
+    skin=mix(skin,vec3(.86,.90,.96),1.-smoothstep(-aa,aa,d));`,
   chromis:`
-    vec3 skin=mix(vec3(.020,.115,.115),vec3(.105,.450,.400),smoothstep(.03,.26,band));
-    skin=mix(skin,vec3(.320,.630,.560),smoothstep(.30,.58,band));
-    skin=mix(skin,vec3(.640,.760,.720),smoothstep(.70,1.,band));
-    // The dark pectoral-base spot, and the dusky wash carried onto the caudal peduncle.
-    skin*=1.-.26*exp(-pow((u-.300)/.024,2.)-pow((band-.60)/.085,2.));
-    skin*=1.-.20*smoothstep(.72,.97,u)*(1.-smoothstep(.55,.85,band));`,
+    // A blue-green chromis is mostly green: pale apple-green over the back washing out
+    // almost to white at the belly, with the blue held in the peduncle and in the
+    // iridophore flare rather than in the base coat. Measured reflectance for the species
+    // carries nothing above green — no yellow, no orange, no red — so the whole coat is
+    // built from green and cyan over a silver belly.
+    vec3 skin=mix(vec3(.045,.300,.235),vec3(.215,.610,.315),smoothstep(.04,.34,band));
+    skin=mix(skin,vec3(.720,.820,.760),smoothstep(.52,.94,band));
+    skin=mix(skin,vec3(.090,.470,.530),smoothstep(.70,1.,u)*.72);
+    // A pair of electric turquoise lines runs from the upper lip to the front of the orbit.
+    skin=mix(skin,vec3(.10,.78,.82),exp(-pow((band-(.30+1.5*u))/.030,2.))*(1.-smoothstep(.04,.11,u))*.8);
+    // The solid black axil is Chromis atripectoralis, sold beside this fish and mistaken
+    // for it; on viridis the upper pectoral base only carries scattered black dots, and
+    // even those show solely when the fin swings forward.
+    skin*=1.-.13*exp(-pow((u-.292)/.032,2.)-pow((band-.44)/.070,2.));
+    // One aggregation runs from green through to blue, and the same fish shifts as it
+    // turns, so the per-animal constant only picks where in that range it sits.
+    skin=mix(skin,skin*vec3(.60,.94,1.34),vTrim.x*.52);
+    // The nesting male goes yellowish while he tends his patch of rubble.
+    skin=mix(skin,skin*vec3(1.55,1.14,.40),vTrim.y*.70);`,
   anthias:`
-    vec3 skin=mix(vec3(.38,.105,.070),vec3(.78,.300,.140),smoothstep(.04,.38,band));
-    skin=mix(skin,vec3(.90,.560,.400),smoothstep(.54,.94,band));
-    // The violet stripe runs from under the eye back to the pectoral base.
-    float stripe=exp(-pow((band-(.360+.30*u))/.085,2.))*smoothstep(.02,.07,u)*(1.-smoothstep(.15,.36,u));
-    skin=mix(skin,vec3(.36,.17,.50),stripe*.95);
-    // The terminal male: magenta-red, with the pale flank patch behind the pectoral.
-    skin=mix(skin,mix(vec3(.40,.075,.155),vec3(.72,.27,.34),smoothstep(.08,.58,band)),vTrim.y);
-    skin=mix(skin,vec3(.78,.61,.58),vTrim.y*.55*exp(-pow((u-.42)/.095,2.)-pow((band-.28)/.15,2.)));`,
+    // Golden orange, deepest along the back and paling to a yellow belly.
+    vec3 skin=mix(vec3(.84,.170,.006),vec3(.92,.330,.018),smoothstep(.05,.40,band));
+    skin=mix(skin,vec3(.98,.570,.135),smoothstep(.56,.96,band));
+    // The species character, and it is not a violet bar: an orange stripe edged in violet
+    // running from the upper lip, under the eye, back to the pectoral-fin base.
+    float line=(band-(.415+.58*u))/.052;
+    float stripe=exp(-line*line)*(1.-smoothstep(.22,.33,u));
+    skin=mix(skin,vec3(1.00,.360,.070),stripe*.90);
+    skin=mix(skin,vec3(.46,.14,.58),stripe*min(1.,abs(line))*.85);
+    // The terminal male: magenta head and peduncle over an olive-gold flank. The pale
+    // square patch behind the pectoral belongs to P. pleurotaenia, not to this fish, so
+    // it is deliberately absent; his one body mark is the red blotch on the pectoral fin.
+    vec3 male=mix(vec3(.62,.070,.190),vec3(.66,.290,.030),smoothstep(.13,.46,u));
+    male=mix(male,vec3(.66,.105,.205),smoothstep(.60,.94,u));
+    skin=mix(skin,mix(male,male*vec3(1.22,.88,1.18),smoothstep(.54,1.,band)),vTrim.y);`,
 };
-// Fin membranes: the pigment across the span, hinge (0) to free margin (1).
+// Fin membranes: the pigment across the span, hinge (0) to free margin (1). `tail`,
+// `below`, `paired` and `pelvic` name which fin this fragment is on, because the median
+// fins share one sheet and a caudal is not painted like a dorsal.
 const FINS={
   clown:`
-    vec3 web=mix(vec3(.78,.225,.018),vec3(.90,.34,.05),span);
-    web=mix(web,vec3(.030,.036,.042),smoothstep(.58,.80,span));
-    web=mix(web,vec3(.78,.78,.72),smoothstep(.90,1.,span));`,
+    // Orange membrane with a heavy black margin on the median fins, a translucent rim
+    // outside it, and pelvics that are all but solid black. A flat membrane picks up far
+    // more of the blue ambient than the curved flank beside it, so an orange mixed to
+    // match the skin renders sand: these are cut back in green and blue to compensate.
+    vec3 web=mix(vec3(.62,.090,.002),vec3(.86,.170,.008),span);
+    web=mix(web,vec3(.011,.014,.018),smoothstep(.62,.85,span)*(1.-.70*tail)*(1.-paired+pelvic));
+    web=mix(web,vec3(.46,.48,.50),smoothstep(.95,1.,span)*(1.-paired));
+    // The peduncle bar's black runs on across the base of the caudal, a third of the way out.
+    web=mix(web,vec3(.011,.014,.018),tail*(1.-smoothstep(.20,.36,span)));
+    web=mix(web,vec3(.013,.016,.020),pelvic*.78);
+    // The trunk bar does not stop at the skin: it carries on up the soft dorsal and down
+    // the anal, which is why those two fins look notched white on a photograph.
+    web=mix(web,vec3(.82,.86,.92),(1.-tail)*(1.-smoothstep(.030,.070,abs(axial-.520)))*(1.-smoothstep(.40,.92,span)));`,
   chromis:`
-    vec3 web=mix(vec3(.150,.470,.400),vec3(.32,.62,.56),span);
-    web=mix(web,vec3(.055,.160,.210),smoothstep(.56,1.,span)*.8);`,
+    // Hyaline fins the colour of the water it hovers in. Only the outer edges of the
+    // caudal lobes take the livery; a blackish dorsal margin, or a caudal that ran out
+    // into dark filaments, would make this C. atripectoralis instead.
+    vec3 web=mix(vec3(.230,.620,.470),vec3(.520,.820,.740),span);
+    web=mix(web,vec3(.090,.500,.540),tail*smoothstep(.34,1.,span)*smoothstep(.34,.04,min(vSkinUv.x,1.-vSkinUv.x)));`,
   anthias:`
-    vec3 web=mix(vec3(.78,.290,.100),vec3(.86,.520,.055),smoothstep(.18,.80,span));
-    web=mix(web,vec3(.48,.145,.205),vTrim.y*.6);`,
+    // Golden membrane on both sexes. The male carries it rose instead, and adds a dusky
+    // blue anal, a red blotch on the pectoral and a violet edge along both lobes of the
+    // lyre — the three marks that separate a terminal male from a big female.
+    vec3 web=mix(vec3(.90,.265,.022),vec3(1.00,.470,.048),smoothstep(.16,.82,span));
+    web=mix(web,mix(vec3(.90,.155,.155),vec3(.50,.075,.290),smoothstep(.45,1.,span)),vTrim.y*(.50+.44*tail));
+    web=mix(web,vec3(.115,.140,.40),vTrim.y*below*(1.-tail)*.62);
+    web=mix(web,vec3(.82,.045,.030),vTrim.y*(paired-pelvic)*smoothstep(.22,.74,span));`,
 };
-// Guanine platelets under the scales: a thin-film flare that only shows off normal.
-const SHEEN={clown:'vec3(.10,.075,.115)',chromis:'vec3(.055,.290,.330)',anthias:'vec3(.190,.085,.245)'};
+// Guanine platelets under the scales: a thin-film flare that only shows off normal. It is
+// the whole point of a chromis and barely there on the barred clownfish.
+const SHEEN={clown:'vec3(.080,.085,.125)',chromis:'vec3(.090,.330,.430)',anthias:'vec3(.230,.100,.290)'};
+// The iris is the fastest species mark at tank distance. percula's is bright orange, and
+// ocellaris' greyish one is exactly how the trade tells the two apart; a damsel's is a
+// silver ring round a large dark pupil; both sexes of sea goldie carry the metallic
+// pink-violet orbital ring that runs straight on into the cheek stripe.
+const EYE={
+  clown:'vec3 iris=vec3(.96,.330,.012),rim=vec3(.28,.055,.004);',
+  chromis:'vec3 iris=vec3(.56,.64,.68),rim=vec3(.045,.330,.360);',
+  anthias:'vec3 iris=mix(vec3(.28,.46,.09),vec3(.44,.50,.055),vTrim.y),rim=mix(vec3(.58,.20,.58),vec3(.86,.18,.14),vTrim.y);',
+};
 
 /** The skin, fin and eye shading for one species. Every animal of that species shares
  *  this material; what differs between them travels in the per-instance aFishTrim:
- *  x tail phase, y beat amplitude, z a shade offset, w the terminal male flag. */
+ *  x tail phase, y beat amplitude, z a per-animal shade — relative body size on the
+ *  clownfish, where the black borders broaden with age — and w the sexed-up individual,
+ *  the terminal male anthias or the chromis holding the nest. */
 function fishMaterial(kind) {
-  const e=eyeSeat(kind);
-  return underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.38,metalness:.02,side:THREE.DoubleSide,transparent:true,forceSinglePass:true}),{
+  const e=eyeSeat(kind),[rows,files]=SPECIES[kind].scales,[hinge,margin]=SPECIES[kind].veil;
+  // percula rows with its pectorals hard enough to drive the whole fish at 2.4–4.6 Hz and
+  // only folds them in for a caudal burst; the two open-water species use theirs to trim
+  // and hover, so their stroke is smaller and slower than the tail that carries them.
+  const stroke=kind==='clown'?[2.6,.050,.034]:kind==='chromis'?[3.6,.024,.010]:[2.2,.030,.014];
+  return underwater(new THREE.MeshStandardMaterial({roughness:.38,metalness:.02,side:THREE.DoubleSide,transparent:true,forceSinglePass:true}),{
     key:`fish-${kind}`,transmission:.085,
     vertex:`attribute float part;attribute vec4 aFishTrim;varying float vPart;varying vec3 vAnatomy;varying vec2 vSkinUv;varying vec2 vTrim;
       #define fishTrim aFishTrim
@@ -236,11 +322,18 @@ function fishMaterial(kind) {
     normal:`objectNormal=normalize(vec3(normal.x-fishSlope(position.x)*normal.z,normal.y,normal.z));`,
     begin:`vPart=part;vAnatomy=position;vSkinUv=uv;vTrim=fishTrim.zw;
       transformed.z+=fishFlex(position.x);
-      if(part>1.5&&part<2.5){float hinge=clamp((.30-position.x)*3.4,0.,1.);transformed.z+=sign(position.z)*sin(fishTrim.x*1.6)*hinge*.030;}
-      ${kind==='anthias'?`// Both sexes carry the lyre; the terminal male's lobes and third dorsal spine are drawn out further.
+      // A pectoral rows through an abduction–adduction cycle rather than flapping: the
+      // blade sweeps out and then back along the flank, so the stroke has a fore-aft part.
+      if(part>1.5&&part<3.5){
+        float hinge=clamp((.30-position.x)*3.4,0.,1.),row=sin(fishTrim.x*${n(stroke[0])});
+        transformed.z+=sign(position.z)*row*hinge*${n(stroke[1])};
+        transformed.x-=row*hinge*hinge*${n(stroke[2])};
+      }
+      ${kind==='anthias'?`// Both sexes carry the lyre and a prolonged third dorsal spine; on the terminal
+      // male the caudal lobes are drawn into filaments and that spine greatly elongated.
       if(part>.5&&part<1.5){
-        if(position.x<-.58){transformed.x-=fishTrim.w*.20*uv.y*smoothstep(.06,.24,abs(position.y));transformed.y+=sign(position.y)*fishTrim.w*.09*uv.y;}
-        else if(position.y>.10)transformed.y+=fishTrim.w*.22*uv.y*exp(-pow((uv.x-.16)/.07,2.));
+        if(position.x<${n(axis(kind,1))}){transformed.x-=fishTrim.w*.26*uv.y*smoothstep(.05,.22,abs(position.y));transformed.y+=sign(position.y)*fishTrim.w*.11*uv.y;}
+        else if(position.y>.10){float spine=uv.y*uv.y*exp(-pow((uv.x-.150)/.034,2.));transformed.y+=(.05+.42*fishTrim.w)*spine;transformed.x-=.34*fishTrim.w*spine;}
       }`:''}`,
     fragment:`varying float vPart;varying vec3 vAnatomy;varying vec2 vSkinUv;varying vec2 vTrim;`,
     color:`
@@ -252,25 +345,36 @@ function fishMaterial(kind) {
         skin*=1.-.26*exp(-pow((u-(.255-.06*band))/.011,2.))*(1.-smoothstep(.78,1.,band));
         float cleft=exp(-pow((band-(.60+2.6*u))/.045,2.))*(1.-smoothstep(.035,.085,u));
         skin=mix(skin,skin*.34,cleft*.8);
-        // Imbricate scale rows, faded out once a scale falls under a pixel.
-        vec2 cell=vec2(u*27.,band*11.);cell.x+=mod(floor(cell.y),2.)*.5;
-        skin*=1.-.115*smoothstep(.40,.50,length(fract(cell)-.5))*(1.-smoothstep(.42,1.15,max(fwidth(cell.x),fwidth(cell.y))));
+        // Imbricate scale rows, faded out once a scale falls under a pixel. A damsel's
+        // scales are large and countable, an anthias' fine and each one centred on a gold
+        // spot — that speckle is most of what the flank of a sea goldie is.
+        vec2 cell=vec2(u*${n(rows)},band*${n(files)});cell.x+=mod(floor(cell.y),2.)*.5;
+        float grain=1.-smoothstep(.42,1.15,max(fwidth(cell.x),fwidth(cell.y))),seam=length(fract(cell)-.5);
+        skin*=1.-${kind==='chromis'?'.165':'.115'}*smoothstep(.40,.50,seam)*grain;
+        ${kind==='anthias'?'skin+=vec3(.048,.030,.002)*(1.-smoothstep(.14,.30,seam))*grain*(1.+2.6*vTrim.y);':''}
         // Countershading and a per-animal shift, so no two of a species read identical.
         skin*=1.-.34*(1.-smoothstep(0.,.11,band));
         skin*=vec3(.93+.14*vTrim.x,.96+.08*vTrim.x,1.03-.10*vTrim.x);
         diffuseColor.rgb=skin*(.975+.025*sin(vAnatomy.x*96.+sin(vAnatomy.y*88.)));
-      }else if(vPart<2.5){
+      }else if(vPart<3.5){
+        // Which fin this is. The three median fins are lofted from one sheet, so a caudal
+        // is told from a dorsal by sitting behind the gap between the anal fin's last ray
+        // and the front of the tail, and an anal from a dorsal by sitting below the spine.
+        float tail=step(vAnatomy.x,${n(axis(kind,1)+.06)}),below=step(vAnatomy.y,0.);
+        float paired=step(1.5,vPart),pelvic=step(2.5,vPart);
+        float axial=(${n(SNOUT)}-vAnatomy.x)/${n(SPECIES[kind].len)};
         ${FINS[kind]}
         // Bone splints stand proud of the membrane between them.
         float rib=pow(.5+.5*cos(vSkinUv.x*${n(Math.PI*2*RAYS)}),26.);
         diffuseColor.rgb=web*(.95+.11*rib)*(.94+.12*vTrim.x);
-        // Two cell layers on those splints: opaque at the hinge, all but hyaline at the
-        // free margin, and the paired fins thinner again than the median ones.
-        diffuseColor.a=clamp((.64+.32*(1.-span)+.22*rib)*(vPart>1.5?.58:1.),.34,1.);
+        // Two cell layers on those splints: thickest at the hinge, thinnest at the free
+        // margin, and the paired fins thinner again than the median ones.
+        diffuseColor.a=clamp((${n(margin)}+${n(hinge-margin)}*(1.-span)+.06*rib)*(paired>.5?.62:1.),.16,1.);
       }else{
         float r=length((vAnatomy.xy-vec2(${n(e.x)},${n(e.y)}))/${n(e.r)});
-        diffuseColor.rgb=mix(vec3(.004,.006,.008),mix(vec3(.26,.20,.09),vec3(.07,.055,.03),r),smoothstep(.50,.64,r));
-        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.016,.024,.030),smoothstep(.84,.95,r));
+        ${EYE[kind]}
+        diffuseColor.rgb=mix(vec3(.004,.006,.008),iris*(1.22-.40*r),smoothstep(.38,.50,r));
+        diffuseColor.rgb=mix(diffuseColor.rgb,rim,smoothstep(.78,.94,r));
         // A wet cornea always carries one small catchlight; without it the eye is a
         // printed dot, and at this size that reads before anything else does.
         diffuseColor.rgb+=vec3(.62,.64,.66)*exp(-dot((vAnatomy.xy-vec2(${n(e.x+e.r*.30)},${n(e.y+e.r*.32)}))/${n(e.r*.27)},(vAnatomy.xy-vec2(${n(e.x+e.r*.30)},${n(e.y+e.r*.32)}))/${n(e.r*.27)}));
@@ -285,10 +389,17 @@ function fishMaterial(kind) {
         // the lamps square on; scaleless skin there is matt, or the back reads as a
         // painted white stripe under a tank light.
         roughnessFactor=.50+.26*(1.-smoothstep(.05,.26,vSkinUv.y))+.14*smoothstep(.78,1.,vSkinUv.y);
-      }else if(vPart>2.5)roughnessFactor=.06;
-      // A fin membrane is matt collagen: at a grazing angle a glossy one throws a hard
-      // white line along the back that no fish has.
-      else roughnessFactor=.76;
+      }else if(vPart>3.5)roughnessFactor=.06;
+      else{
+        // A fin is a membrane stretched between round splints, and it corrugates across
+        // them. Left as one flat sheet it faces the lamps square on and takes a broad
+        // specular wash the curved flank never gets, which bleaches every warm membrane
+        // toward sand; corrugated, the rays catch the light one at a time instead.
+        normal=normalize(normal+vec3(.46,.20,0.)*sin(vSkinUv.x*${n(Math.PI*2*RAYS)}));
+        // Matt collagen: a glossy fin throws a hard white line along the back that no
+        // fish has.
+        roughnessFactor=.88;
+      }
     `,
   });
 }
@@ -303,8 +414,12 @@ export function createFishSchool(scene,simulation){
     const data=new Float32Array(fish.length*4),attribute=new THREE.InstancedBufferAttribute(data,4).setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute('aFishTrim',attribute);
     const mesh=new THREE.InstancedMesh(geometry,fishMaterial(kind),fish.length);mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);scene.add(mesh); // tiny fixed population, shader-deformed bounds
-    // Trim z shades each animal a little differently; w marks the one terminal male.
-    groups.push({fish,data,attribute,mesh,trim:fish.map((f,i)=>[(i*.6180339887+.31)%1,kind==='anthias'&&f.rank===0?1:0])});
+    // Trim z shades each animal a little differently — for the clownfish it instead
+    // carries relative size, because percula's black borders broaden with age and the
+    // biggest fish on an anemone is the blackest. Trim w marks the sexed-up individual:
+    // the terminal male anthias, and the chromis holding the nest.
+    const largest=Math.max(...fish.map(f=>f.size));
+    groups.push({fish,data,attribute,mesh,trim:fish.map((f,i)=>[kind==='clown'?f.size/largest:(i*.6180339887+.31)%1,(kind==='anthias'||kind==='chromis')&&f.rank===0?1:0])});
   }
   const dummy=new THREE.Object3D(),euler=new THREE.Euler(0,0,0,'YXZ');
   return {update(){

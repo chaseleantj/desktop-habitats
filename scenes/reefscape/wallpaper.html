@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-fit="fill" data-motion="host">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#04121f" />
+    <meta
+      name="description"
+      content="The living coral reef, framed to fill a screen as a desktop wallpaper."
+    />
+    <title>Reefscape • Desktop Habitats wallpaper</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "../../vendor/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main id="habitat" aria-label="Interactive reef aquarium">
+      <canvas id="scene" tabindex="-1"></canvas>
+      <div id="loading" aria-hidden="true"></div>
+    </main>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

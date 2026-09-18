@@ -16,7 +16,17 @@ import IOKit.ps
 
 let sceneScheme = "desktop-habitats"
 let sceneHost = "local"
-let scenePage = "/scenes/riverscape/wallpaper.html"
+/// The habitats the app can show, in menu order. The key is the folder under scenes/.
+let habitats: [(key: String, name: String)] = [
+  ("riverscape", "Riverscape"), ("reefscape", "Reefscape"),
+]
+/// The habitat chosen from the menu, remembered across restarts; Riverscape until one is.
+var habitat: String {
+  let chosen = UserDefaults.standard.string(forKey: "habitat") ?? ""
+  return habitats.contains { $0.key == chosen } ? chosen : habitats[0].key
+}
+var habitatName: String { habitats.first { $0.key == habitat }?.name ?? habitat }
+var scenePage: String { "/scenes/\(habitat)/wallpaper.html" }
 
 /// Serves the bundled copy of the aquarium to the web view.
 final class SceneHandler: NSObject, WKURLSchemeHandler {
@@ -79,7 +89,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   private var rate = 0
   private var battery = false
 
-  init(screen: NSScreen, root: URL) {
+  init(screen: NSScreen, root: URL, behind: NSWindow? = nil) {
     let settings = WKWebViewConfiguration()
     settings.setURLSchemeHandler(SceneHandler(root: root), forURLScheme: sceneScheme)
     settings.suppressesIncrementalRendering = true
@@ -152,7 +162,10 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     // Hiding the agent, or another app's "Hide Others", must not take the water away.
     window.canHide = false
     window.setFrame(screen.frame, display: true)
-    window.orderFrontRegardless()
+    // A replacement scene loads out of sight, under the one it is replacing, so the
+    // desktop never shows its blank first seconds; it is uncovered once it has drawn.
+    if let behind { window.order(.below, relativeTo: behind.windowNumber) }
+    else { window.orderFrontRegardless() }
 
     view.load(URLRequest(url: URL(string: "\(sceneScheme)://\(sceneHost)\(scenePage)")!))
   }
@@ -166,6 +179,14 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     window.contentView = nil
     window.orderOut(nil)
     window.close()
+  }
+
+  /// Whether the page has drawn its first frame and taken its loading cover down.
+  func isDrawn(_ done: @escaping (Bool) -> Void) {
+    guard loaded else { return done(false) }
+    view.evaluateJavaScript("Boolean(document.querySelector('#loading')?.hidden)") { value, _ in
+      done(value as? Bool ?? false)
+    }
   }
 
   /// Send only state changes. didFinish resends once after navigation, so there is no
@@ -280,7 +301,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let state = NSMenuItem()
   private let pause = NSMenuItem()
   private let feed = NSMenuItem()
+  private let habitatMenu = NSMenu()
   private var applied = 0
+  private var switching = false
   private var pointerTimer: Timer?
   private var pointerRate = 0
   private var exposureTimer: Timer?
@@ -363,14 +386,56 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// Draws for a moment even if the desktop is covered, then saves the frame.
   private func snapshot() {
-    guard let first = screens.first else { return }
+    snapshot(to: URL(fileURLWithPath: "/tmp/desktop-habitats.png")) {}
+  }
+
+  private func snapshot(to file: URL, then done: @escaping () -> Void) {
+    guard let first = screens.first else { return done() }
     for screen in screens { screen.setRate(60) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
       first.probe()
-      first.snapshot(to: URL(fileURLWithPath: "/tmp/desktop-habitats.png")) {
+      first.snapshot(to: file) {
         self?.applyRate()
+        done()
       }
     }
+  }
+
+  /// The still picture under the live layer, what login and Mission Control show, is a
+  /// frame of whichever habitat is running; after a change of habitat it is retaken so
+  /// the desktop does not fall back to the other scene whenever the water stops.
+  private func refreshStill() {
+    let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+    guard let still = pictures?.appendingPathComponent("Desktop Habitats.png") else { return }
+    snapshot(to: still) {
+      guard FileManager.default.fileExists(atPath: still.path) else { return }
+      for screen in NSScreen.screens {
+        try? NSWorkspace.shared.setDesktopImageURL(still, for: screen, options: [:])
+      }
+    }
+  }
+
+  /// Calls back once every one of `fresh` has drawn a frame, or once it is clear that
+  /// none is going to (the wallpaper is still), or after half a minute regardless.
+  private func settled(_ fresh: [Wallpaper], then done: @escaping () -> Void) {
+    var polls = 0
+    func poll() {
+      polls += 1
+      if applied == 0 || polls > 60 { return done() }
+      var pending = fresh.count
+      var all = true
+      for screen in fresh {
+        screen.isDrawn { drawn in
+          all = all && drawn
+          pending -= 1
+          guard pending == 0 else { return }
+          if all { done() } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { poll() }
+          }
+        }
+      }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { poll() }
   }
 
   // Putting a full-screen window on a screen is itself a screen-parameter change, so the
@@ -492,7 +557,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     symbol?.isTemplate = true
     item.button?.image = symbol
     if symbol == nil { item.button?.title = "Desktop Habitats" }
-    item.button?.toolTip = "Desktop Habitats · Riverscape"
+    item.button?.toolTip = "Desktop Habitats · \(habitatName)"
 
     let menu = NSMenu()
     menu.delegate = self
@@ -501,6 +566,18 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     menu.autoenablesItems = false
     state.isEnabled = false
     menu.addItem(state)
+    menu.addItem(.separator())
+    // One item per habitat; the chosen one is ticked whenever the menu opens.
+    let choose = NSMenuItem(title: "Habitat", action: nil, keyEquivalent: "")
+    for (index, entry) in habitats.enumerated() {
+      let option = NSMenuItem(
+        title: entry.name, action: #selector(chooseHabitat(_:)), keyEquivalent: "")
+      option.target = self
+      option.tag = index
+      habitatMenu.addItem(option)
+    }
+    choose.submenu = habitatMenu
+    menu.addItem(choose)
     menu.addItem(.separator())
     feed.title = "Feed"
     feed.target = self
@@ -534,6 +611,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? "Resting behind your windows"
             : "Running at \(applied) frames a second"
     pause.title = stopped ? "Resume" : "Pause"
+    for option in habitatMenu.items {
+      option.state = habitats[option.tag].key == habitat ? .on : .off
+    }
     // In Low Power Mode nothing is going to draw, so the item would be a false promise.
     // Reduce Motion is not the same case: the machine can perfectly well draw, it has
     // merely been asked not to, and Resume is how somebody says they want this one anyway.
@@ -548,6 +628,29 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// would leave the others watching an unfed aquarium.
   @objc private func feedFish() {
     for screen in screens { screen.feed() }
+  }
+
+  /// Every screen is rebuilt with the new scene, from its own copy in the bundle. The
+  /// choice outlives a restart, like pausing does.
+  @objc private func chooseHabitat(_ sender: NSMenuItem) {
+    let chosen = habitats[sender.tag].key
+    guard chosen != habitat, !switching else { return }
+    UserDefaults.standard.set(chosen, forKey: "habitat")
+    status?.button?.toolTip = "Desktop Habitats · \(habitatName)"
+    // The new scene comes up behind the old one and takes over once it has drawn, so
+    // the change is a cut from one living tank to the other rather than a blank wait.
+    switching = true
+    let old = screens
+    layout = NSScreen.screens.map(\.frame)
+    screens = NSScreen.screens.enumerated().map { index, screen in
+      Wallpaper(screen: screen, root: root, behind: index < old.count ? old[index].window : nil)
+    }
+    applyRate()
+    settled(screens) { [weak self] in
+      for screen in old { screen.close() }
+      self?.switching = false
+      self?.refreshStill()
+    }
   }
 
   @objc private func togglePause() {

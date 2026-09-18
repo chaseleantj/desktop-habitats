@@ -372,7 +372,7 @@ function applySwimming(material, withColor = true) {
     }
   };
   material.customProgramCacheKey = () =>
-    `aquarium-fish-${withColor ? "skin" : "depth"}-4`;
+    `aquatica-fish-${withColor ? "skin" : "depth"}-4`;
 }
 
 function clampToBox(position, box, margin = 0) {

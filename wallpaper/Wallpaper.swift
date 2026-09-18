@@ -14,7 +14,7 @@ import Cocoa
 import WebKit
 import IOKit.ps
 
-let sceneScheme = "aquarium"
+let sceneScheme = "aquatica"
 let sceneHost = "local"
 
 /// Serves the bundled copy of the aquarium to the web view.
@@ -57,7 +57,7 @@ final class Reporter: NSObject, WKScriptMessageHandler {
   func userContentController(
     _ controller: WKUserContentController, didReceive message: WKScriptMessage
   ) {
-    NSLog("aquarium page: \(message.body)")
+    NSLog("aquatica page: \(message.body)")
   }
 }
 
@@ -104,15 +104,15 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     settings.userContentController.addUserScript(
       WKUserScript(
         source: """
-          window.aquariumPointerCount = 0;
-          window.aquariumPointer = (x, y) => {
+          window.aquaticaPointerCount = 0;
+          window.aquaticaPointer = (x, y) => {
             const canvas = document.querySelector('#scene');
-            window.aquariumPointerCount++;
+            window.aquaticaPointerCount++;
             if (canvas)
               canvas.dispatchEvent(
                 new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
           };
-          window.aquariumPointerOut = () => {
+          window.aquaticaPointerOut = () => {
             const canvas = document.querySelector('#scene');
             if (canvas) canvas.dispatchEvent(new PointerEvent('pointerleave'));
           };
@@ -171,7 +171,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   func setRate(_ wanted: Int) {
     if wanted != rate {
       rate = wanted
-      NSLog("aquarium wallpaper: \(rate) fps")
+      NSLog("aquatica: \(rate) fps")
     }
     send()
   }
@@ -179,7 +179,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   private func send() {
     guard loaded else { return }
     view.evaluateJavaScript(
-      "typeof aquariumRate === 'function' && aquariumRate(\(rate))")
+      "typeof aquaticaRate === 'function' && aquaticaRate(\(rate))")
   }
 
   /// A pinch of food on the water, asked for from the menu rather than by clicking. The
@@ -188,20 +188,20 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   /// where the food would only pile up unseen until it started again.
   func feed() {
     guard loaded, rate > 0 else { return }
-    view.evaluateJavaScript("typeof aquariumFeed === 'function' && aquariumFeed()")
+    view.evaluateJavaScript("typeof aquaticaFeed === 'function' && aquaticaFeed()")
   }
 
   /// A cursor position in this screen's coordinates, or nil when the cursor left it.
   func setPointer(_ point: NSPoint?) {
     guard loaded, rate > 0 else { return }
     guard let point else {
-      if inside { view.evaluateJavaScript("aquariumPointerOut()") }
+      if inside { view.evaluateJavaScript("aquaticaPointerOut()") }
       inside = false
       return
     }
     inside = true
     view.evaluateJavaScript(
-      "aquariumPointer(\(String(format: "%.1f", point.x)),\(String(format: "%.1f", point.y)))")
+      "aquaticaPointer(\(String(format: "%.1f", point.x)),\(String(format: "%.1f", point.y)))")
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -213,7 +213,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
     withError error: Error
   ) {
-    NSLog("aquarium wallpaper: the scene did not load: \(error.localizedDescription)")
+    NSLog("aquatica: the scene did not load: \(error.localizedDescription)")
   }
 
   /// What the page thinks it is doing, for the log.
@@ -229,12 +229,12 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
           webgl2: Boolean(context),
           gpu: context && context.getParameter(context.RENDERER),
           hidden: document.hidden,
-          pointers: window.aquariumPointerCount,
+          pointers: window.aquaticaPointerCount,
         });
       })()
       """
     ) { value, error in
-      NSLog("aquarium page state: \(value ?? error?.localizedDescription ?? "unreadable")")
+      NSLog("aquatica page state: \(value ?? error?.localizedDescription ?? "unreadable")")
     }
   }
 
@@ -247,7 +247,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
         let png = NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:])
       else { return }
       try? png.write(to: file)
-      NSLog("aquarium wallpaper: wrote \(file.path)")
+      NSLog("aquatica: wrote \(file.path)")
     }
   }
 }
@@ -342,7 +342,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
       self?.applyRate()
     }
 
-    // `kill -USR1` writes what the first screen is showing to /tmp/aquarium-wallpaper.png.
+    // `kill -USR1` writes what the first screen is showing to /tmp/aquatica.png.
     signal(SIGUSR1, SIG_IGN)
     snapshots = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
     snapshots?.setEventHandler { [weak self] in self?.snapshot() }
@@ -355,7 +355,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     for screen in screens { screen.setRate(60) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
       first.probe()
-      first.snapshot(to: URL(fileURLWithPath: "/tmp/aquarium-wallpaper.png")) {
+      first.snapshot(to: URL(fileURLWithPath: "/tmp/aquatica.png")) {
         self?.applyRate()
       }
     }
@@ -439,11 +439,11 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// The agent's only visible piece: a fish in the menu bar that can stop the water.
   private func addMenu() {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    let symbol = NSImage(systemSymbolName: "fish", accessibilityDescription: "Aquarium wallpaper")
+    let symbol = NSImage(systemSymbolName: "fish", accessibilityDescription: "Aquatica")
     symbol?.isTemplate = true
     item.button?.image = symbol
-    if symbol == nil { item.button?.title = "Aquarium" }
-    item.button?.toolTip = "Aquarium wallpaper"
+    if symbol == nil { item.button?.title = "Aquatica" }
+    item.button?.toolTip = "Aquatica"
 
     let menu = NSMenu()
     menu.delegate = self
@@ -467,7 +467,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     item.menu = menu
     status = item
     if item.button?.window == nil || !item.isVisible {
-      NSLog("aquarium wallpaper: the menu bar item did not appear")
+      NSLog("aquatica: the menu bar item did not appear")
     }
   }
 

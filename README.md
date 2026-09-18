@@ -1,4 +1,4 @@
-# Freshwater aquarium
+# Aquatica
 
 A planted freshwater aquascape that runs in a browser. A sand channel winds between stones and a piece of driftwood, moss and algae grow over the hardscape, rivergrass and ferns fill the sides, and a shoal of 24 bloodfin tetras (_Aphyocharax anisitsi_) swims through it. The scene is drawn in WebGL2 with custom GLSL through Three.js, and the fish keep swimming for as long as the page is open.
 
@@ -49,7 +49,7 @@ The scene can run behind your desktop icons. This needs macOS 13 or newer and th
 npm run wallpaper
 ```
 
-This builds a small agent, installs it as `~/Applications/Aquarium Wallpaper.app` with its own copy of the scene, starts it, and sets it to start again at every login. It also sets the desktop picture to a frame of the scene, which is what login and Mission Control show. Installing takes about twenty seconds, most of it waiting for the first frame to draw.
+This builds a small agent, installs it as `~/Applications/Aquatica.app` with its own copy of the scene, starts it, and sets it to start again at every login. It also sets the desktop picture to a frame of the scene, which is what login and Mission Control show. Installing takes about twenty seconds, most of it waiting for the first frame to draw.
 
 macOS asks for permission once during the install, when the still picture is set: **"Terminal wants to control System Events"**. Declining is handled: your desktop picture stays as it is, and the live layer covers it anyway. The app is signed ad hoc as part of the build, so there is no Gatekeeper prompt.
 
@@ -61,15 +61,15 @@ If **Reduce motion** is on in System Settings, the wallpaper starts still and th
 
 The frame rate follows what is worth drawing. A scene this size costs the graphics processor ten to twenty watts at full rate, so it stops entirely in Low Power Mode, behind a full screen of work, on a locked screen or a sleeping display. It slows to 20 frames a second when windows leave only part of the desktop showing, and runs at 60 on mains power or 30 on battery with the desktop in plain sight. It renders at the display's own scale factor, but never below 1.5 pixels per screen pixel and never above 2, so a non-Retina display still gets a supersampled image.
 
-To check on it, `kill -USR1` on the agent writes the frame it is drawing to `/tmp/aquarium-wallpaper.png`. Page errors and frame-rate changes go to `/tmp/aquarium-wallpaper.log`.
+To check on it, `kill -USR1` on the agent writes the frame it is drawing to `/tmp/aquatica.png`. Page errors and frame-rate changes go to `/tmp/aquatica.log`.
 
 ```sh
 npm run unwallpaper
 ```
 
-This stops the agent, removes the login item and deletes the app. Two things are left behind on purpose: the still frame at `~/Pictures/Aquarium Wallpaper.png`, and the desktop picture setting, which keeps pointing at that frame if the installer was allowed to change it. So the desktop falls back to a photograph of the tank rather than going blank. To get your old wallpaper back, choose it again in System Settings.
+This stops the agent, removes the login item and deletes the app. Two things are left behind on purpose: the still frame at `~/Pictures/Aquatica.png`, and the desktop picture setting, which keeps pointing at that frame if the installer was allowed to change it. So the desktop falls back to a photograph of the tank rather than going blank. To get your old wallpaper back, choose it again in System Settings.
 
-If you fork this, the bundle id `com.chaselean.aquarium-wallpaper` appears in `wallpaper/install.sh`, `wallpaper/uninstall.sh` and `wallpaper/Info.plist`. Change all three together, or the install and uninstall scripts will stop agreeing with the app they manage.
+If you fork this, the bundle id `com.chaselean.aquatica` appears in `wallpaper/install.sh`, `wallpaper/uninstall.sh` and `wallpaper/Info.plist`. Change all three together, or the install and uninstall scripts will stop agreeing with the app they manage.
 
 ## Files
 
@@ -122,7 +122,7 @@ The 1K diffuse and OpenGL normal maps in `assets/` are bundled from Poly Haven u
 - [Rough Wood](https://polyhaven.com/a/rough_wood)
 - [Sand 01](https://polyhaven.com/a/sand_01)
 
-The aquarium's scene geometry, GLSL modifications and simulation were created for this project.
+Aquatica's scene geometry, GLSL modifications and simulation were created for this project.
 
 ## License
 

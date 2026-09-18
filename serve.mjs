@@ -40,5 +40,5 @@ http
     }
   })
   .listen(port, "127.0.0.1", () =>
-    console.log(`Aquarium preview: http://localhost:${port}`),
+    console.log(`Aquatica: http://localhost:${port}`),
   );

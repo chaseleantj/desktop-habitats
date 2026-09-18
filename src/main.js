@@ -7,7 +7,7 @@ import { randomGenerator } from "./math.js";
 import { waterTime } from "./water.js";
 
 const canvas = document.querySelector("#scene");
-const aquarium = document.querySelector("#aquarium");
+const aquatica = document.querySelector("#aquatica");
 const loading = document.querySelector("#loading");
 // A page that says the host owns its motion leaves the system's reduced-motion
 // preference to the host, which is the only one that can offer a way back: the wallpaper
@@ -26,7 +26,7 @@ const resolution = Number(document.documentElement.dataset.resolution) || 1.5;
 // desktop is covered, when drawing the scene would only cost power. A rate of none is
 // already a full stop, since the frame loop turns back before the clock advances.
 let interval = 0;
-window.aquariumRate = (fps) => {
+window.aquaticaRate = (fps) => {
   interval = fps > 0 ? 1000 / fps - 1.5 : Infinity;
 };
 // A pinch of food, for a host with no pointer to click with. Defined before the scene
@@ -34,7 +34,7 @@ window.aquariumRate = (fps) => {
 // whichever of the two reasons it is still for: pellets nobody is drawing are pellets the
 // fish never see, and they would all arrive at once whenever the water started again.
 let sprinkle = null;
-window.aquariumFeed = () => {
+window.aquaticaFeed = () => {
   if (sprinkle && !paused && interval !== Infinity) sprinkle();
 };
 
@@ -198,7 +198,7 @@ async function start() {
       height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)),
     );
   }
-  new ResizeObserver(resize).observe(aquarium);
+  new ResizeObserver(resize).observe(aquatica);
   resize();
 
   // The pointer is a hand at the front glass. The fish read where it is and how fast it
@@ -268,7 +268,7 @@ async function start() {
   function fullscreen() {
     if (document.fullscreenElement) document.exitFullscreen();
     else
-      aquarium
+      aquatica
         .requestFullscreen()
         .catch((error) => console.warn(error.message));
   }

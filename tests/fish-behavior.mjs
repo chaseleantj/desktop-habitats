@@ -4,11 +4,15 @@ import assert from "node:assert/strict";
 register("./three-loader.mjs", import.meta.url);
 const THREE = await import("three");
 const { BOUNDS, COUNT, createFishSchool } = await import("../src/fish.js");
-const { FLOW_DIRECTION } = await import("../src/water.js");
+const { createFood } = await import("../src/food.js");
+const { shelteredVelocity } = await import("../src/water.js");
 const { THICKETS } = await import("../src/plants.js");
 
 const STEP = 1 / 60;
-const upstream = FLOW_DIRECTION.clone().negate();
+// The current sweeps, so upstream is not a fixed direction any more: it has to be read
+// off the water where and when each fish is sampled.
+const flow = new THREE.Vector3();
+const upstream = new THREE.Vector3();
 const behindGrass = (p) =>
   p.z < -2.2 && THICKETS.some((bed) => p.x > bed.minX && p.x < bed.maxX);
 const insideTank = (p) =>
@@ -68,9 +72,16 @@ for (let frame = 0; frame < 7200; frame++) {
     currentStates.add(fish.mode);
     if (fish.mode === "inspect") visits++;
     if (behindGrass(fish.position)) behind++;
+    // Facing into the current only means anything while there is a current to face. The
+    // sweep passes through slack twice a cycle, and the fish stop orienting below the
+    // same threshold, so those frames are evidence of nothing either way.
     if (frame > 3600 && fish.mode === "hover") {
-      hovering++;
-      if (fish.heading.dot(upstream) > 0.5) facingUpstream++;
+      shelteredVelocity(fish.position, frame * STEP, flow, THICKETS);
+      if (flow.lengthSq() > 0.0025) {
+        hovering++;
+        upstream.copy(flow).normalize().negate();
+        if (fish.heading.dot(upstream) > 0.5) facingUpstream++;
+      }
     }
     assert.ok(
       fish.position.toArray().every(Number.isFinite),
@@ -213,6 +224,141 @@ assert.ok(
 );
 startledSchool.dispose();
 
+// A pinch of food on the surface: the shoal hears it land, gathers over seconds rather
+// than at once, scrambles for it without holding formation, misses some of it, and comes
+// back together with nothing left to chase.
+const tank = new THREE.Scene();
+const food = createFood(tank, { thickets: THICKETS });
+const fed = createFishSchool(tank, {
+  obstacles: [{ center: new THREE.Vector3(1.35, 3.6, -0.65), radius: 0.6 }],
+  landmarks: [
+    { kind: "wood", point: new THREE.Vector3(1.35, 4.3, 0.1), obstacle: 0 },
+  ],
+  thickets: THICKETS,
+  food,
+});
+// Mean distance from each of a set of fish to its nearest neighbour anywhere in the
+// school: the measure of how tightly packed they are.
+const spacingOf = (school, subset) => {
+  let total = 0;
+  for (const fish of subset) {
+    let nearest = Infinity;
+    for (const other of school.fish)
+      if (other !== fish)
+        nearest = Math.min(nearest, fish.position.distanceTo(other.position));
+    total += nearest;
+  }
+  return total / subset.length;
+};
+const PINCH = 8;
+const DROP = 480;
+for (let frame = 0; frame < DROP; frame++) {
+  food.update(STEP, frame * STEP);
+  fed.update(STEP, frame * STEP, null);
+}
+const calmSpacing = spacingOf(fed, fed.fish);
+food.drop(new THREE.Vector3(0.4, 8.2, 1.2), PINCH);
+const arrivals = new Map();
+const held = new Array(COUNT).fill(0);
+const chasing = new Array(COUNT).fill(-1);
+let crowding = Infinity,
+  regrouped = 0,
+  regroupedFrames = 0,
+  feedingPeak = 0,
+  longestFeed = 0;
+for (let frame = DROP; frame < DROP + 75 * 60; frame++) {
+  const time = frame * STEP;
+  food.update(STEP, time);
+  fed.update(STEP, time, null);
+  const since = (frame - DROP) * STEP;
+  for (const fish of fed.fish) {
+    if (fish.mode === "feed") {
+      if (!arrivals.has(fish.id)) arrivals.set(fish.id, since);
+      // Time spent on one pellet, not time spent feeding. A fish working through a
+      // scatter in turn is doing exactly what it should; only a fish that cannot let go
+      // of a single pellet is stuck, so the clock restarts whenever the target changes.
+      if (chasing[fish.id] !== fish.foodSerial) {
+        chasing[fish.id] = fish.foodSerial;
+        held[fish.id] = 0;
+      }
+      held[fish.id] += STEP;
+      longestFeed = Math.max(longestFeed, held[fish.id]);
+      feedingPeak = Math.max(feedingPeak, fish.velocity.length());
+    } else {
+      held[fish.id] = 0;
+      chasing[fish.id] = -1;
+    }
+    assert.ok(
+      fish.position.toArray().every(Number.isFinite),
+      "Feeding must not put a fish position off the number line",
+    );
+    assert.ok(insideTank(fish.position), "A feeding fish must stay inside the tank");
+  }
+  for (const pellet of food.pellets)
+    assert.ok(
+      pellet.position.toArray().every(Number.isFinite),
+      "Pellet positions must stay finite",
+    );
+  // How close the fish at the food let each other come, against how far apart the whole
+  // shoal sits once the scramble is over.
+  const scrambling = fed.fish.filter((fish) => fish.mode === "feed");
+  if (scrambling.length > 2) crowding = Math.min(crowding, spacingOf(fed, scrambling));
+  if (since > 65) {
+    regrouped += spacingOf(fed, fed.fish);
+    regroupedFrames++;
+  }
+}
+regrouped /= regroupedFrames;
+const feeding = fed.getTelemetry();
+assert.ok(
+  food.stats.eaten > PINCH / 2,
+  `Most of a pinch of food should be eaten (got ${food.stats.eaten} of ${PINCH})`,
+);
+assert.ok(
+  food.pellets.every((pellet) => food.settled(pellet)),
+  "Uneaten food must reach the sand, not hang in mid-water",
+);
+const times = [...arrivals.values()].sort((a, b) => a - b);
+assert.ok(
+  arrivals.size > 3 && arrivals.size < COUNT,
+  `Food should draw much of the shoal, but not telepathically all of it (got ${arrivals.size})`,
+);
+assert.ok(
+  times[times.length - 1] - times[0] > 3,
+  `Fish must arrive over seconds, not together (spread ${(times[times.length - 1] - times[0]).toFixed(1)}s)`,
+);
+assert.ok(
+  times.filter((t) => t < times[0] + 0.5).length < 5,
+  "A pellet is seen by one fish at a time, not by a crowd on one frame",
+);
+assert.ok(
+  feeding.strikes > feeding.bites && feeding.bites > 0,
+  `Some strikes must miss (${feeding.bites} taken in ${feeding.strikes} strikes)`,
+);
+assert.ok(
+  Number.isFinite(feeding.states.feed),
+  "Feeding must be counted in the telemetry like any other state",
+);
+assert.ok(
+  feedingPeak > 1.8 && feedingPeak < 4,
+  `A rush at food is faster than cruising and slower than a C-start (got ${feedingPeak.toFixed(2)})`,
+);
+assert.equal(feeding.escapes, 0, "Food must never fire a C-start");
+assert.ok(
+  longestFeed < 8,
+  `No fish may be stuck chasing one pellet (longest ${longestFeed.toFixed(1)}s)`,
+);
+assert.ok(
+  crowding < calmSpacing * 0.7,
+  `Fish at food must tolerate crowding they normally flick away from (${calmSpacing.toFixed(2)} to ${crowding.toFixed(2)})`,
+);
+assert.ok(
+  regrouped > crowding * 1.4,
+  `The shoal must open out again once the scramble is over (${crowding.toFixed(2)} to ${regrouped.toFixed(2)})`,
+);
+fed.dispose();
+food.dispose();
+
 console.log(
-  `PASS: 120 simulated seconds; ${roaming}/${COUNT} fish explored all three dimensions; ${(gliding / travelling * 100).toFixed(0)}% of travel was quiet-tail gliding; calm tail beats at most ${peakBeatFrequency.toFixed(2)} Hz; ${visits} inspection frames; ${behind} fish-frames behind the grass; ${(rheotaxis * 100).toFixed(0)}% of hovering fish facing upstream; minimum sampled spacing ${minimumSpacing.toFixed(3)}; slow approach gave room (${before.toFixed(2)} to ${after.toFixed(2)}) without a startle; a lunge startled ${telemetry.pointerResponses} fish directly and ${telemetry.escapes} in all, peaking at ${peakSpeed.toFixed(2)} units per second.`,
+  `PASS: 120 simulated seconds; ${roaming}/${COUNT} fish explored all three dimensions; ${(gliding / travelling * 100).toFixed(0)}% of travel was quiet-tail gliding; calm tail beats at most ${peakBeatFrequency.toFixed(2)} Hz; ${visits} inspection frames; ${behind} fish-frames behind the grass; ${(rheotaxis * 100).toFixed(0)}% of hovering fish facing upstream; minimum sampled spacing ${minimumSpacing.toFixed(3)}; slow approach gave room (${before.toFixed(2)} to ${after.toFixed(2)}) without a startle; a lunge startled ${telemetry.pointerResponses} fish directly and ${telemetry.escapes} in all, peaking at ${peakSpeed.toFixed(2)} units per second; a pinch of ${PINCH} pellets drew ${arrivals.size} fish over ${(times[times.length - 1] - times[0]).toFixed(1)} seconds, ${feeding.bites} taken in ${feeding.strikes} strikes, crowding to ${crowding.toFixed(2)} at the food and opening back out to ${regrouped.toFixed(2)}.`,
 );

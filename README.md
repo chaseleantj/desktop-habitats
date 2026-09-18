@@ -4,9 +4,11 @@
 
 Have you always wanted an aquarium? Now you can have it, right on your desktop :)
 
-The fish react to your cursor and compete for food, while the plants sway in a slow current. I plan to add more environments soon. For now, there is only Riverscape, a planted freshwater aquarium.
+The fish react to your cursor and compete for food, while the plants sway in a slow current. There are two environments: **Riverscape**, a planted freshwater aquarium, and **Reefscape**, a saltwater tank with three clownfish, a host anemone, small reef fish and two cleaner shrimp.
 
-The scene is rendered live with Three.js and WebGL2. Everything runs locally, with no account or internet connection needed after setup. Desktop wallpaper support is **macOS only** for now; you can also try Riverscape in a browser. The app opens Riverscape directly.
+![Reefscape, a saltwater tank with clownfish around an anemone](docs/images/reefscape-wide.png)
+
+The scene is rendered live with Three.js and WebGL2. Everything runs locally, with no account or internet connection needed after setup. Desktop wallpaper support is **macOS only** for now; both environments also run in a browser. The Mac app starts with Riverscape and remembers the environment you pick from its menu.
 
 ## Install on Mac
 
@@ -32,7 +34,8 @@ You don't need Node.js for the wallpaper. If you already have it, `npm run wallp
 
 Click the fish icon in the menu bar:
 
-- **Feed** drops ten pellets into each screen's tank. Uneaten pellets dissolve after 20–40 seconds of running simulation time, measured from when they touch the water.
+- **Environment** switches every screen between Riverscape and Reefscape and remembers your choice.
+- **Feed** drops ten pellets into each screen's tank, or eight in Reefscape. Uneaten pellets dissolve after 20–40 seconds of running simulation time in Riverscape and 36 seconds in Reefscape, measured from when they touch the water.
 - **Pause / Resume** controls the animation. Your choice is remembered across restarts.
 - **Quit** closes the app until you open it again or next sign in.
 
@@ -48,23 +51,23 @@ The desktop app supports macOS only. The browser preview needs a browser with We
 
 It uses more power than a still wallpaper because it renders a 3D scene. The amount depends on your Mac, screen resolution and number of displays. There isn't a measured battery-life estimate yet.
 
-The optimized build thins the rear rivergrass by about 30%, reduces oversampling and shadow work, and fully stops the render loop when paused or hidden. It keeps 4× multisampling, the HDR lighting, all 24 fish and the foreground planting. On an M5 Pro this halves the GPU time per frame; battery drain has not been measured.
+Riverscape's optimized build thins the rear rivergrass by about 30%, reduces oversampling and shadow work, and fully stops the render loop when paused or hidden. It keeps 4× multisampling, the HDR lighting, all 24 fish and the foreground planting. On an M5 Pro this halves the GPU time per frame; battery drain has not been measured.
 
-The wallpaper keeps the same frame-rate limits, so rendering improvements are not spent on extra frames:
+The wallpaper keeps the same frame-rate limits, so rendering improvements are not spent on extra frames. Reefscape caps itself lower still:
 
-| Desktop state | Rendering |
-| --- | --- |
-| Clearly visible, plugged in | Up to 60 fps |
-| Clearly visible, on battery | Up to 30 fps |
-| Mostly covered by windows | Up to 20 fps |
-| Almost entirely covered | Stopped |
-| Low Power Mode, locked screen or sleeping display | Stopped |
+| Desktop state | Riverscape | Reefscape |
+| --- | --- | --- |
+| Clearly visible, plugged in | Up to 60 fps | Up to 30 fps |
+| Clearly visible, on battery | Up to 30 fps | Up to 24 fps |
+| Mostly covered by windows | Up to 20 fps | Up to 20 fps |
+| Almost entirely covered | Stopped | Stopped |
+| Low Power Mode, locked screen or sleeping display | Stopped | Stopped |
 
-Pause it from the menu when you want a still aquarium, or quit to close the app completely. These power controls belong to the wallpaper app; the browser preview does not have the same battery-aware limits.
+Pause it from the menu when you want a still aquarium, or quit to close the app completely. These power controls belong to the wallpaper app; the browser previews do not have the same battery-aware limits, though Reefscape offers Eco, Balanced and Detail profiles of its own.
 
 ### Does it monitor my keystrokes?
 
-No. The wallpaper does not listen to typing in other apps or record keystrokes. The browser preview handles Space and F only while that page has focus, for pause and fullscreen.
+No. The wallpaper does not listen to typing in other apps or record keystrokes. The browser previews handle Space and F only while that page has focus, for pause and fullscreen. Reefscape also uses H to hide its controls.
 
 The wallpaper reads your cursor position so the fish can react. It also checks window positions and sizes to estimate how much of the desktop is visible. It does not capture the contents of those windows, store cursor history, or send this information anywhere.
 
@@ -102,7 +105,7 @@ sh wallpaper/uninstall.sh
 
 Or use `npm run unwallpaper`. This stops the app, removes its login item and deletes the installed app.
 
-The still image at `~/Pictures/Desktop Habitats.png` stays behind, along with the desktop picture setting. Choose your previous wallpaper in System Settings, then delete the image if you no longer want it. The saved pause preference is also retained.
+The still image at `~/Pictures/Desktop Habitats.png` stays behind, along with the desktop picture setting. Choose your previous wallpaper in System Settings, then delete the image if you no longer want it. The saved pause and environment preferences are also retained.
 
 ## Try it in a browser
 
@@ -116,15 +119,16 @@ Open [the local preview](http://127.0.0.1:8080). There is no `npm install` step;
 
 - Click the water to drop food.
 - Move the pointer near the fish to interact.
-- Press **Space** to pause or resume, and **F** for fullscreen.
+- Press **Space** to pause or resume, and **F** for fullscreen. In Reefscape, **H** hides the controls.
+- In Reefscape, **Energy / detail** picks Eco (24 fps), Balanced (30 fps, the default) or Detail (45 fps). These are caps, not promises.
 
 Reduce Motion starts the preview paused. Serve the page over HTTP; opening `index.html` directly will not load its JavaScript modules. Any static server also works, such as `python3 -m http.server 8080 --bind 127.0.0.1` if you have Python installed.
 
 ## Development
 
-One water model drives the plants, drifting particles, fish and underwater lighting. Fish alternate between swimming and coasting, explore the tank, avoid neighbours and compete for pellets. The scene uses raster rendering with custom GLSL shaders, shadows and depth effects.
+In Riverscape, one water model drives the plants, drifting particles, fish and underwater lighting. Fish alternate between swimming and coasting, explore the tank, avoid neighbours and compete for pellets. Reefscape runs a fixed-step simulation of its fish and shrimp, with GPU-animated anemone tentacles, merged static coral geometry and a cached hardscape shadow map. Both scenes use raster rendering with custom GLSL shaders, shadows and depth effects.
 
-Riverscape lives in `scenes/riverscape/`, including its textures and tests. Future scenes can live alongside it. The Mac app currently loads Riverscape directly; there is no scene picker or plugin system.
+Each scene lives in its own directory under `scenes/`, with its textures and tests. The root page is a chooser and the Mac app has an Environment menu; there is no plugin system. Reefscape reads the sand and rock maps from Riverscape's assets, so the two directories ship together.
 
 | Files | Purpose |
 | --- | --- |
@@ -132,9 +136,11 @@ Riverscape lives in `scenes/riverscape/`, including its textures and tests. Futu
 | `scenes/riverscape/src/` | Fish, feeding, plants, water, terrain and rendering |
 | `scenes/riverscape/assets/` | Rock, wood and sand textures |
 | `scenes/riverscape/tests/` | Riverscape's headless simulation checks |
+| `scenes/reefscape/` | Reefscape's preview, wallpaper page, organisms, simulation, baked assets and tests |
+| `tools/` | Python scripts that rebuild Reefscape's baked rock mesh and pore maps |
 | `wallpaper/` | Mac app and install/uninstall scripts |
 | `vendor/` | Bundled Three.js library and license |
-| `index.html`, `serve.mjs` | Default preview entry and local server |
+| `index.html`, `serve.mjs` | Environment chooser and local server |
 
 Run the checks with Node.js:
 
@@ -143,7 +149,7 @@ npm run check
 npm test
 ```
 
-These check JavaScript syntax; simulate swimming, spacing, startle responses and feeding; verify render budgets and frame pacing at 60/120 Hz; and confirm that rear-grass thinning leaves the foreground geometry and downstream random sequence unchanged. They also check that paused/hidden scenes have no scheduled render callbacks. They do not measure Mac battery use.
+These check JavaScript syntax; simulate swimming, spacing, startle responses and feeding; verify render budgets and frame pacing at 60/120 Hz; and confirm that rear-grass thinning leaves the foreground geometry and downstream random sequence unchanged. They also check that paused/hidden scenes have no scheduled render callbacks. Reefscape's tests run three minutes of simulation with deterministic seeding, keep the clownfish near their host, bound the food and check the baked rock mesh and fish geometry. They do not measure Mac battery use.
 
 The default rendering profile is `balanced`. Append `?quality=reference&still=1` to a scene page for the original density/render budgets at simulation time zero, or `?still=1` for the optimized still. Append `diagnostics=1` to enable the local `habitatBenchmark()` function. Nothing is uploaded.
 
@@ -155,4 +161,4 @@ If you change the app's bundle ID, update `com.chaselean.desktop-habitats` in `w
 
 Desktop Habitats is [MIT licensed](LICENSE). Three.js 0.180.0 is bundled under its [MIT license](vendor/THREE-LICENSE.txt).
 
-The rock, wood and sand textures come from Poly Haven under [CC0](https://polyhaven.com/license): [Rock Boulder Dry](https://polyhaven.com/a/rock_boulder_dry), [Rough Wood](https://polyhaven.com/a/rough_wood) and [Sand 01](https://polyhaven.com/a/sand_01).
+The rock, wood and sand textures come from Poly Haven under [CC0](https://polyhaven.com/license): [Rock Boulder Dry](https://polyhaven.com/a/rock_boulder_dry), [Rough Wood](https://polyhaven.com/a/rough_wood) and [Sand 01](https://polyhaven.com/a/sand_01). Reefscape's rock mesh, pore maps, coral texture and organism meshes are procedural, generated by the scripts in `tools/`.

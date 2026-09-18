@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1825" />
+    <meta
+      name="description"
+      content="A saltwater aquarium with three clownfish, a host anemone, small shoals and cleaner shrimp. A local, interactive 3D aquarium preview."
+    />
+    <title>Reefscape • Desktop Habitats</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "../../vendor/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main id="habitat" aria-label="Interactive saltwater aquarium">
+      <canvas
+        id="scene"
+        tabindex="0"
+        aria-label="A saltwater tank with three clownfish, an anemone, small reef fish and cleaner shrimp. Click to feed. Space pauses. F enters fullscreen. H hides controls."
+      ></canvas>
+      <nav class="chrome" aria-label="Environment">
+        <a href="../riverscape/">Riverscape</a>
+        <span aria-current="page">Reefscape</span>
+      </nav>
+      <footer class="chrome">
+        <div class="buttons">
+          <button id="feed" title="Drop a little food">Feed</button>
+          <button id="pause" aria-pressed="false" title="Space">Pause</button>
+          <button id="fullscreen" title="F">Fullscreen</button>
+        </div>
+        <div class="preferences">
+          <label for="quality">Energy / detail</label>
+          <select id="quality">
+            <option value="eco">Eco · 24 fps</option>
+            <option value="balanced" selected>Balanced · 30 fps</option>
+            <option value="detail">Detail · 45 fps</option>
+          </select>
+          <button id="hide" title="H toggles controls">Hide UI</button>
+        </div>
+      </footer>
+      <div id="loading" role="status"><p>Settling into salt water</p></div>
+      <div id="error" role="alert" hidden></div>
+    </main>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

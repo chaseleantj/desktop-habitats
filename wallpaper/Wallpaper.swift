@@ -16,11 +16,32 @@ import IOKit.ps
 
 let sceneScheme = "desktop-habitats"
 let sceneHost = "local"
-let scenePage = "/scenes/riverscape/wallpaper.html"
+
+/// The scenes the app can show, each a directory under scenes/ with a wallpaper.html.
+enum Habitat: String, CaseIterable {
+  case riverscape, reefscape
+
+  var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+  var page: String { "/scenes/\(rawValue)/wallpaper.html" }
+  /// What shows before the page has drawn anything, matched to each scene's own dark.
+  var background: NSColor {
+    switch self {
+    case .riverscape: NSColor(calibratedRed: 0.031, green: 0.055, blue: 0.047, alpha: 1)
+    case .reefscape: NSColor(calibratedRed: 0.043, green: 0.094, blue: 0.145, alpha: 1)
+    }
+  }
+
+  /// Riverscape until somebody picks otherwise. The choice outlives a restart.
+  static var selected: Habitat {
+    get { UserDefaults.standard.string(forKey: "habitat").flatMap(Habitat.init) ?? .riverscape }
+    set { UserDefaults.standard.set(newValue.rawValue, forKey: "habitat") }
+  }
+}
 
 /// Serves the bundled copy of the aquarium to the web view.
 final class SceneHandler: NSObject, WKURLSchemeHandler {
   private let root: URL
+  private let page: String
   private static let types = [
     "html": "text/html",
     "js": "text/javascript",
@@ -30,11 +51,14 @@ final class SceneHandler: NSObject, WKURLSchemeHandler {
     "png": "image/png",
   ]
 
-  init(root: URL) { self.root = root.standardizedFileURL }
+  init(root: URL, page: String) {
+    self.root = root.standardizedFileURL
+    self.page = page
+  }
 
   func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
     guard let url = task.request.url else { return }
-    let path = url.path == "" || url.path == "/" ? scenePage : url.path
+    let path = url.path == "" || url.path == "/" ? page : url.path
     let file = root.appendingPathComponent(path).standardizedFileURL
     guard file.path.hasPrefix(root.path + "/"), let data = try? Data(contentsOf: file) else {
       task.didFailWithError(
@@ -79,9 +103,10 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
   private var rate = 0
   private var battery = false
 
-  init(screen: NSScreen, root: URL) {
+  init(screen: NSScreen, root: URL, habitat: Habitat) {
     let settings = WKWebViewConfiguration()
-    settings.setURLSchemeHandler(SceneHandler(root: root), forURLScheme: sceneScheme)
+    settings.setURLSchemeHandler(
+      SceneHandler(root: root, page: habitat.page), forURLScheme: sceneScheme)
     settings.suppressesIncrementalRendering = true
     // The page holds no state worth keeping between runs and should never leave traces.
     settings.websiteDataStore = .nonPersistent()
@@ -131,8 +156,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     {
       view.setValue(false, forKey: "windowOcclusionDetectionEnabled")
     }
-    view.underPageBackgroundColor = NSColor(
-      calibratedRed: 0.031, green: 0.055, blue: 0.047, alpha: 1)
+    view.underPageBackgroundColor = habitat.background
     view.autoresizingMask = [.width, .height]
 
     window = DesktopWindow(
@@ -146,7 +170,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     window.ignoresMouseEvents = true
     window.isOpaque = true
     window.hasShadow = false
-    window.backgroundColor = NSColor(calibratedRed: 0.031, green: 0.055, blue: 0.047, alpha: 1)
+    window.backgroundColor = habitat.background
     window.isReleasedWhenClosed = false
     window.contentView = view
     // Hiding the agent, or another app's "Hide Others", must not take the water away.
@@ -154,7 +178,7 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     window.setFrame(screen.frame, display: true)
     window.orderFrontRegardless()
 
-    view.load(URLRequest(url: URL(string: "\(sceneScheme)://\(sceneHost)\(scenePage)")!))
+    view.load(URLRequest(url: URL(string: "\(sceneScheme)://\(sceneHost)\(habitat.page)")!))
   }
 
   func close() {
@@ -280,6 +304,8 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let state = NSMenuItem()
   private let pause = NSMenuItem()
   private let feed = NSMenuItem()
+  private var habitatItems: [NSMenuItem] = []
+  private var habitat = Habitat.selected
   private var applied = 0
   private var pointerTimer: Timer?
   private var pointerRate = 0
@@ -383,7 +409,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private func build() {
     layout = NSScreen.screens.map(\.frame)
     for screen in screens { screen.close() }
-    screens = NSScreen.screens.map { Wallpaper(screen: $0, root: root) }
+    screens = NSScreen.screens.map { Wallpaper(screen: $0, root: root, habitat: habitat) }
     applyRate()
   }
 
@@ -492,7 +518,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     symbol?.isTemplate = true
     item.button?.image = symbol
     if symbol == nil { item.button?.title = "Desktop Habitats" }
-    item.button?.toolTip = "Desktop Habitats · Riverscape"
+    item.button?.toolTip = "Desktop Habitats · \(habitat.title)"
 
     let menu = NSMenu()
     menu.delegate = self
@@ -501,6 +527,19 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     menu.autoenablesItems = false
     state.isEnabled = false
     menu.addItem(state)
+    menu.addItem(.separator())
+    let environments = NSMenu(title: "Environment")
+    environments.autoenablesItems = false
+    for choice in Habitat.allCases {
+      let item = NSMenuItem(title: choice.title, action: #selector(selectHabitat), keyEquivalent: "")
+      item.target = self
+      item.representedObject = choice.rawValue
+      environments.addItem(item)
+      habitatItems.append(item)
+    }
+    let environment = NSMenuItem(title: "Environment", action: nil, keyEquivalent: "")
+    environment.submenu = environments
+    menu.addItem(environment)
     menu.addItem(.separator())
     feed.title = "Feed"
     feed.target = self
@@ -523,6 +562,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// Says what the wallpaper is doing, and why, whenever the menu is opened. Most of the
   /// reasons it holds still are deliberate, and unexplained stillness reads as a fault.
   func menuNeedsUpdate(_ menu: NSMenu) {
+    for item in habitatItems {
+      item.state = item.representedObject as? String == habitat.rawValue ? .on : .off
+    }
     state.title =
       lowPower
       ? "Still, for Low Power Mode"
@@ -548,6 +590,18 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// would leave the others watching an unfed aquarium.
   @objc private func feedFish() {
     for screen in screens { screen.feed() }
+  }
+
+  /// Every screen changes together: the scenes are separate tanks, not one habitat with
+  /// two windows, and mixing them would make the menu's checkmark a half-truth.
+  @objc private func selectHabitat(_ sender: NSMenuItem) {
+    guard let name = sender.representedObject as? String, let chosen = Habitat(rawValue: name),
+      chosen != habitat
+    else { return }
+    habitat = chosen
+    Habitat.selected = chosen
+    status?.button?.toolTip = "Desktop Habitats · \(chosen.title)"
+    build()
   }
 
   @objc private func togglePause() {

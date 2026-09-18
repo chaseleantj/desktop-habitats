@@ -1,14 +1,14 @@
 {
   "name": "desktop-habitats",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "type": "module",
-  "description": "Living desktop scenes for macOS, starting with Riverscape, a freshwater aquarium.",
+  "description": "Living desktop scenes for macOS: Riverscape, a freshwater aquarium, and Reefscape, a saltwater tank.",
   "scripts": {
     "start": "node serve.mjs",
     "wallpaper": "sh wallpaper/install.sh",
     "unwallpaper": "sh wallpaper/uninstall.sh",
     "check": "node --check serve.mjs && for f in scenes/*/src/*.js; do node --check \"$f\" || exit 1; done",
-    "test": "node scenes/riverscape/tests/fish-behavior.mjs && node scenes/riverscape/tests/render-policy.mjs && node scenes/riverscape/tests/plant-budget.mjs"
+    "test": "node scenes/riverscape/tests/fish-behavior.mjs && node scenes/riverscape/tests/render-policy.mjs && node scenes/riverscape/tests/plant-budget.mjs && node scenes/reefscape/tests/behavior.mjs && node scenes/reefscape/tests/assets.mjs"
   }
 }

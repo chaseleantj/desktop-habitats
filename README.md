@@ -2,7 +2,9 @@
 
 ![Riverscape running as a live macOS wallpaper, behind desktop icons and widgets](docs/images/riverscape-desktop.png)
 
-Desktop Habitats brings living scenes to your Mac's desktop. Its first scene, **Riverscape**, is a planted freshwater aquarium. A shoal of 24 bloodfin tetras swims among rocks, driftwood and plants. The fish react to your cursor and compete for food, while the plants sway in a slow current.
+Have you always wanted an aquarium? Now you can have it, right on your desktop :)
+
+The fish react to your cursor and compete for food, while the plants sway in a slow current. I plan to add more environments soon. For now, there is only Riverscape, a planted freshwater aquarium.
 
 The scene is rendered live with Three.js and WebGL2. Everything runs locally, with no account or internet connection needed after setup. Desktop wallpaper support is **macOS only** for now; you can also try Riverscape in a browser. The app opens Riverscape directly.
 

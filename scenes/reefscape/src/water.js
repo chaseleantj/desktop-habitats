@@ -6,10 +6,15 @@ export const SURFACE=TANK.surface;
 // Surface ripples, at the actual aquarium depth (10 cm/unit), not ocean swell.
 // omega² = g k tanh(kh). Pump circulation below is a separate forced flow.
 const g=98.1,h=SURFACE;
+// The two short components carry no visible surface — the surface is above the frame —
+// but they are what breaks the glitter on the bed into hand-sized cells instead of
+// metre-wide washes, so they belong in the same dispersion-correct set.
 export const WAVES=[
   {a:.009,k:2.1,angle:.18,phase:.3},
   {a:.007,k:2.85,angle:1.37,phase:1.7},
   {a:.005,k:4.05,angle:-.42,phase:.8},
+  {a:.0017,k:6.9,angle:.92,phase:2.4},
+  {a:.0009,k:9.6,angle:-1.15,phase:.55},
 ].map(w=>({...w,dx:Math.cos(w.angle),dz:Math.sin(w.angle),omega:Math.sqrt(g*w.k*Math.tanh(w.k*h))}));
 const n=x=>Number(x).toFixed(7);
 // Two opposed circulation pumps. Slow alternating strength and a recirculating
@@ -55,8 +60,8 @@ vec3 reefIrradiance(vec3 p,float t){
   float determinant=(1.-d*hxx)*(1.-d*hzz)-d*d*hxz*hxz;
   // Glitter lines: the fold where the ray map loses rank is a thin bright band, the rest a
   // mild dimming, as point-like LEDs draw on a tank bed.
-  float focus=.86+1.5*pow(clamp(1.-abs(determinant)*1.4,0.,1.),2.5);
-  return exp(-vec3(.13,.046,.026)*depth*.1)*focus;
+  float focus=.84+5.40*pow(clamp(1.-abs(determinant)*1.35,0.,1.),3.4);
+  return exp(-vec3(.13,.046,.026)*depth*.16)*focus;
 }`;
 
 /** PBR lighting with short in-water paths. Camera air path is deliberately excluded.

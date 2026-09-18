@@ -3,10 +3,10 @@ import { randomGenerator } from './math.js';
 import { currentAt } from './water.js';
 
 export function createParticles(scene,simulation){
-  const rng=randomGenerator(846),N=96,pos=new Float32Array(N*3),vel=new THREE.Vector3(),point=new THREE.Vector3();
+  const rng=randomGenerator(846),N=460,pos=new Float32Array(N*3),vel=new THREE.Vector3(),point=new THREE.Vector3();
   for(let i=0;i<N;i++)pos.set([(rng()-.5)*21,rng()*8,(rng()-.5)*13],i*3);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3).setUsage(THREE.DynamicDrawUsage));
-  const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{pixelRatio:{value:1}},vertexShader:`uniform float pixelRatio;varying float fade;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp(19./(-mv.z),.7,2.2)*pixelRatio;fade=.14+.11*clamp(position.y/8.,0.,1.);}`,fragmentShader:`varying float fade;void main(){float a=1.-smoothstep(.12,.5,length(gl_PointCoord-.5));gl_FragColor=vec4(.77,.88,.85,a*fade);}`});
+  const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{pixelRatio:{value:1}},vertexShader:`uniform float pixelRatio;varying float fade;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp(24./(-mv.z),.8,3.1)*pixelRatio;fade=.26+.20*clamp(position.y/8.,0.,1.);}`,fragmentShader:`varying float fade;void main(){float a=1.-smoothstep(.12,.5,length(gl_PointCoord-.5));gl_FragColor=vec4(.77,.88,.85,a*fade);}`});
   const points=new THREE.Points(g,mat);points.frustumCulled=false;scene.add(points);
   const foodGeo=new THREE.SphereGeometry(1,7,5),foodMat=new THREE.MeshStandardMaterial({color:'#b49366',roughness:.9});
   const pellets=new THREE.InstancedMesh(foodGeo,foodMat,simulation.food.length);pellets.frustumCulled=false;scene.add(pellets);const dummy=new THREE.Object3D();

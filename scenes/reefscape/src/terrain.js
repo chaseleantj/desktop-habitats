@@ -26,33 +26,59 @@ export async function createTerrain(scene){
   const rng=randomGenerator(952),loader=new THREE.TextureLoader();
   const [sandMap,sandNormal,rockMap,rockNormal,rockGeo,poreNormal,poreDetail]=await Promise.all([
     ...['sand_01_diff.jpg','sand_01_nor_gl.jpg','rock_boulder_dry_diff.jpg','rock_boulder_dry_nor_gl.jpg'].map(name=>loader.loadAsync(new URL('../../riverscape/assets/'+name,import.meta.url).href)),liveRockGeometry(),loader.loadAsync(new URL('../assets/limestone-normal.png',import.meta.url)),loader.loadAsync(new URL('../assets/limestone-detail.png',import.meta.url))]);
-  for(const t of [sandMap,sandNormal,rockMap,rockNormal,poreNormal,poreDetail]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=4;}
+  for(const t of [sandMap,sandNormal,rockMap,rockNormal,poreNormal,poreDetail]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;}
   sandMap.colorSpace=rockMap.colorSpace=THREE.SRGBColorSpace;
-  sandMap.repeat.set(11,5.5);sandNormal.repeat.copy(sandMap.repeat);
-  // Aragonite reads cream, not paper white: the grain keeps its shadowed texture under the lamp.
-  const sandMat=underwater(new THREE.MeshStandardMaterial({color:'#eee9d9',roughness:.96,map:sandMap,normalMap:sandNormal,normalScale:new THREE.Vector2(.62,.62)}),{key:'tank-sand',vertex:'attribute float shade;varying float vShade;',begin:'vShade=shade;',fragment:'varying float vShade;',color:`float grain=dot(diffuseColor.rgb,vec3(.299,.587,.114));diffuseColor.rgb=vec3(.30,.29,.26)*(.45+.70*grain)*vShade;`});
+  sandMap.repeat.set(36,17);sandNormal.repeat.copy(sandMap.repeat);
+  // Aragonite is a bright bed under a reef lamp — near white, faintly warm — bright enough
+  // to throw a real bounce back into the rock. Two samples of the one photograph carry it:
+  // an 80 mm tile for actual grain, and the same image stretched to 4 m for the drifts and
+  // hollows a bed settles into. One tiling alone reads either as cracked mud up close or as
+  // a flat sheet at the wide view.
+  const sandMat=underwater(new THREE.MeshStandardMaterial({color:'#eee9d9',roughness:.84,map:sandMap,normalMap:sandNormal,normalScale:new THREE.Vector2(1.9,1.9)}),{key:'tank-sand',vertex:'attribute float shade;varying float vShade;',begin:'vShade=shade;',fragment:'varying float vShade;',
+    map:`vec3 reefGrain=texture2D(map,vMapUv).rgb;vec3 reefDrift=texture2D(map,vMapUv*.11+vec2(.37,.11)).rgb;`,
+    color:`float grain=dot(reefGrain,vec3(.299,.587,.114)),drift=dot(reefDrift,vec3(.299,.587,.114));
+      diffuseColor.rgb=vec3(.880,.845,.758)*(.34+1.30*grain)*(.78+.52*drift)*vShade;`});
   // The bed runs past every frame edge, like the riverscape's, so no rim or wall is ever seen.
   const ground=new THREE.PlaneGeometry(30,14,180,84);ground.rotateX(-Math.PI/2);ground.translate(0,0,1.0);const p=ground.attributes.position,shade=new Float32Array(p.count);
   // Sand darkens where it meets the rock: a baked contact shadow from each rock footprint,
   // so the hardscape sits in the bed instead of floating on a lit sheet.
   for(let i=0;i<p.count;i++){const x=p.getX(i),z=p.getZ(i);p.setY(i,groundHeight(x,z)+.014*Math.sin(x*7.8+z*2.3));
     let contact=0;for(const r of ROCKS){const d=Math.max(0,Math.hypot((x-r[0])/r[3],(z-r[2])/r[5])-1)*Math.min(r[3],r[5]);contact=Math.max(contact,Math.exp(-d*d/(.55*r[4])));}
-    shade[i]=1-.62*contact;}
+    // Less of the lamp reaches the back of the tank, and there is more water in the way,
+    // so the bed falls off toward the wall instead of meeting it along a bright horizon.
+    shade[i]=(1-.62*contact)*(.40+.60*(z<-1?Math.max(0,(z+5.2)/4.2)**1.4:1));}
   ground.setAttribute('shade',new THREE.BufferAttribute(shade,1));ground.computeVertexNormals();const sand=new THREE.Mesh(ground,sandMat);sand.receiveShadow=true;scene.add(sand);
   // Tri-planar photogrammetry detail over actual porous limestone geometry. The
   // color stream includes coralline patches and precomputed crevice occlusion.
-  const rockMat=underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.93,map:rockMap}),{key:'live-rock',vertex:'varying vec3 vRockNormal;',normal:'vRockNormal=normal;',fragment:'varying vec3 vRockNormal;uniform sampler2D reefPores;uniform sampler2D reefPoreDetail;',map:`
+  const rockMat=underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.86,map:rockMap}),{key:'live-rock',vertex:'varying vec3 vRockNormal;',normal:'vRockNormal=normal;',fragment:'varying vec3 vRockNormal;uniform sampler2D reefPores;uniform sampler2D reefPoreDetail;',map:`
     vec3 w=pow(abs(normalize(vRockNormal)),vec3(4.));w/=max(.001,w.x+w.y+w.z);
-    vec3 p=vReefWorld*1.25;
+    vec3 p=vReefWorld*3.2,q=vReefWorld*.62;
     vec3 detail=texture2D(map,p.yz).rgb*w.x+texture2D(map,p.xz).rgb*w.y+texture2D(map,p.xy).rgb*w.z;
     float lum=dot(detail,vec3(.299,.587,.114));
-    float pores=texture2D(reefPoreDetail,p.yz*2.).r*w.x+texture2D(reefPoreDetail,p.xz*2.).r*w.y+texture2D(reefPoreDetail,p.xy*2.).r*w.z;
-    diffuseColor.rgb*=(.27+lum*1.65)*(.48+pores*.86);`,
+    // The pore height field is sampled at the scale the relief is shaded at, so the dark
+    // values land inside actual cavities instead of floating over the surface as a stain.
+    float pores=texture2D(reefPoreDetail,q.yz).r*w.x+texture2D(reefPoreDetail,q.xz).r*w.y+texture2D(reefPoreDetail,q.xy).r*w.z;
+    float reefGrit=texture2D(reefPoreDetail,p.yz*1.25).r*w.x+texture2D(reefPoreDetail,p.xz*1.25).r*w.y+texture2D(reefPoreDetail,p.xy*1.25).r*w.z;
+    diffuseColor.rgb*=(.80+lum*.58)*(.46+pores*1.02);`,
+    // A coralline crust breaks at a scale no vertex can carry: where the grit texture is
+    // high the crust has worn through and bare limestone shows, so the patches read as a
+    // fine speckled mottle instead of the painted blotches a vertex stream alone gives.
+    color:`float bare=smoothstep(.38,.80,reefGrit);
+      float chalk=dot(diffuseColor.rgb,vec3(.30,.50,.20));
+      diffuseColor.rgb=mix(diffuseColor.rgb,vec3(chalk*1.14,chalk*1.00,chalk*.78),bare*.48);`,
     surfaceNormal:`vec3 rn=normalize(vRockNormal);vec3 rw=pow(abs(rn),vec3(4.));rw/=max(.001,rw.x+rw.y+rw.z);
-      vec3 rp=vReefWorld*2.5;
+      vec3 rp=vReefWorld*.62,rq=vReefWorld*4.0;
       vec3 nx=texture2D(reefPores,rp.yz).xyz*2.-1.;vec3 ny=texture2D(reefPores,rp.xz).xyz*2.-1.;vec3 nz=texture2D(reefPores,rp.xy).xyz*2.-1.;
       vec3 perturb=vec3(0.,nx.x,nx.y)*rw.x+vec3(ny.x,0.,ny.y)*rw.y+vec3(nz.x,nz.y,0.)*rw.z;
-      normal=normalize(mat3(viewMatrix)*normalize(rn+perturb*.9));`});
+      // The first octave lays the atlas over 1.6 units, so its pits land at the 1-3 cm the
+      // eye resolves; this second one is the millimetre grain between them, for close views.
+      vec3 fx=texture2D(reefPores,rq.yz).xyz*2.-1.;vec3 fy=texture2D(reefPores,rq.xz).xyz*2.-1.;vec3 fz=texture2D(reefPores,rq.xy).xyz*2.-1.;
+      perturb+=(vec3(0.,fx.x,fx.y)*rw.x+vec3(fy.x,0.,fy.y)*rw.y+vec3(fz.x,fz.y,0.)*rw.z)*.80;
+      normal=normalize(mat3(viewMatrix)*normalize(rn+perturb*.9));
+      // Wet limestone is not uniformly matt: the raised crust holds a film of water and
+      // catches the lamp, the open pores stay dull. Without this the rock has no highlight
+      // anywhere and the whole frame sits in a midtone band.
+      roughnessFactor*=.62+.52*reefGrit;`});
   const rockCompile=rockMat.onBeforeCompile;rockMat.onBeforeCompile=shader=>{rockCompile(shader);shader.uniforms.reefPores={value:poreNormal};shader.uniforms.reefPoreDetail={value:poreDetail};};
   // Keep extra shader textures visible to the common disposal path.
   rockMat.userData.extraTextures=[poreNormal,poreDetail];
@@ -62,7 +88,7 @@ export async function createTerrain(scene){
     const x=(rng()-.5)*22,z=-2.8+rng()*8;
     if(Math.abs(x)<1.2&&rng()>.32)continue;
     const s=.025+Math.pow(rng(),3)*.16,g=ellipsoid([x,groundHeight(x,z)+s*.14,z],[s,s*.53,s*.76],i+91,8);
-    tint(g,()=>new THREE.Color('#c3b8a6').multiplyScalar(.55+rng()*.30));rubble.push(g);
+    tint(g,()=>new THREE.Color('#cdc2ae').multiplyScalar(.72+rng()*.34));rubble.push(g);
   }
   const rubbleMesh=new THREE.Mesh(merge(rubble),underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),{key:'rubble'}));rubbleMesh.receiveShadow=true;scene.add(rubbleMesh);
   return {obstacles:ROCKS,host:HOST,stations:STATIONS};
@@ -79,9 +105,12 @@ export function createBackdrop(scene){
     fragmentShader:`varying vec3 p;
       #include <fog_pars_fragment>
       void main(){
-        float top=smoothstep(-1.,9.5,p.y);
+        float top=smoothstep(-3.5,9.5,p.y);
         float wash=.55+.45*(exp(-pow((p.x+3.6)/6.,2.))+exp(-pow((p.x-4.4)/5.5,2.)));
-        vec3 col=mix(vec3(.004,.014,.034),vec3(.022,.066,.150)*wash,top);
+        // The base is lit water over a bed receding into haze, not a black wall: anything
+        // darker and the sand's far edge reads as a cut-out horizon through the arch.
+        vec3 col=mix(vec3(.038,.080,.138),vec3(.022,.066,.150)*wash,top);
+        col+=vec3(.030,.052,.070)*exp(-pow((p.y+.35)/1.5,2.));
         gl_FragColor=vec4(col,1.);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

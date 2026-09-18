@@ -29,7 +29,9 @@ export function createShrimp(scene, simulation) {
         const x=.18-j*.068;
         const knee=V(x-.06,.06,sign*(.17+j*.009));
         const foot=V(x+.10-j*.026,-.15,sign*(.25+j*.024));
-        const path=[V(x,.09,sign*.072),knee,foot];
+        // The coxa starts inside the shell: the rear pairs stand wider than the abdomen,
+        // so a root on the body's own half-width left them beginning in open water.
+        const path=[V(x,.105,sign*.042),knee,foot];
         const g=tube(path,[.009,.008,.003],5);
         tint(g,()=>new THREE.Color(j<2?'#e9cca8':'#e3b597'));legs.push(g);
         if(j===0){bodyParts.push(tube([foot.clone().add(V(0,.10,0)),foot.clone().add(V(.052,.075,0))],[.011,.003],5));}
@@ -66,5 +68,9 @@ export function createShrimp(scene, simulation) {
     root.add(new THREE.Mesh(merge(antennae),antennaMat));
     scene.add(root);models.push({root,movement});
   }
-  return {update(){models.forEach((m,i)=>{const s=simulation.shrimp[i];m.root.position.copy(s.position);const x=s.position.x,z=s.position.z;normal.set(-THREE.MathUtils.clamp((supportHeight(x+.12,z)-supportHeight(x-.12,z))/.24,-.38,.38),1,-THREE.MathUtils.clamp((supportHeight(x,z+.12)-supportHeight(x,z-.12))/.24,-.38,.38)).normalize();tilt.setFromUnitVectors(up,normal);yaw.setFromAxisAngle(up,s.yaw);m.root.quaternion.copy(tilt).multiply(yaw);m.movement.value.set(s.step,s.walk>0?1:0,s.signal||1);});},models};
+  return {update(){models.forEach((m,i)=>{const s=simulation.shrimp[i];const x=s.position.x,z=s.position.z;
+    // The body rides a fixed 1.3 cm over whatever the rock does beneath it, so the feet
+    // meet the surface; the station's own height is a simulation anchor, not a seat, and
+    // using it directly left the animal standing in open water.
+    m.root.position.set(x,supportHeight(x,z)+.132,z);normal.set(-THREE.MathUtils.clamp((supportHeight(x+.12,z)-supportHeight(x-.12,z))/.24,-.38,.38),1,-THREE.MathUtils.clamp((supportHeight(x,z+.12)-supportHeight(x,z-.12))/.24,-.38,.38)).normalize();tilt.setFromUnitVectors(up,normal);yaw.setFromAxisAngle(up,s.yaw);m.root.quaternion.copy(tilt).multiply(yaw);m.movement.value.set(s.step,s.walk>0?1:0,s.signal||1);});},models};
 }

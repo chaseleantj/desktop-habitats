@@ -54,8 +54,10 @@ export function tube(points, radii, radial=7, bump=0) {
  *  the shaded base keeps its encrusted pigment and only the outermost branches —
  *  the ones nothing grows past — end in a pale growing tip. `order` sets how
  *  many times a stem divides, so one builder covers staghorn, needle-fine
- *  birdsnest and stubby digitata growth forms. */
-export function coralBranches(origin,height,width,seed,color,tip='#cfe2f2',{thickness=.026,forks=6,roots=8,order=2,taper=.62,corallite=.14,rise=.64,blunt=.7,spread=.26}={}){
+ *  birdsnest and stubby digitata growth forms. `reach` is how far a primary stem
+ *  runs before its first fork: short reach with many roots gives the dense
+ *  cauliflower clump an Acropora actually grows, not a hedge of long sticks. */
+export function coralBranches(origin,height,width,seed,color,tip='#cfe2f2',{thickness=.026,forks=6,roots=8,order=2,taper=.62,corallite=.14,rise=.64,blunt=.7,spread=.26,reach=.80,vary=.14}={}){
   const rng=randomGenerator(seed),parts=[],base=V(...origin),c=new THREE.Color(color),tipColor=new THREE.Color(tip);
   function branch(start,dir,len,radius,depth){
     const pts=[],rs=[],bend=V((rng()-.5)*.28,.12,(rng()-.5)*.28),levels=depth?5:4,shade=.84+rng()*.32;
@@ -67,7 +69,7 @@ export function coralBranches(origin,height,width,seed,color,tip='#cfe2f2',{thic
     const g=tube(pts,rs,depth?6:5,corallite);
     tint(g,p=>{
       const t=Math.max(0,Math.min(1,(p.y-origin[1])/height)),axial=Math.max(0,Math.min(1,((p.x-start.x)*dir.x+(p.y-start.y)*dir.y+(p.z-start.z)*dir.z)/len));
-      return c.clone().lerp(tipColor,depth?.06*axial:.10+.82*smoothstep(.70,1,axial)).multiplyScalar(shade*(.52+.48*t)+.11*noise(p.x*15,p.y*15,p.z*15));});
+      return c.clone().lerp(tipColor,depth?.08*axial:.05+.34*smoothstep(.34,1,axial)).multiplyScalar(shade*(.74+.30*t)+.10*noise(p.x*15,p.y*15,p.z*15)+.07*noise(p.x*4.5+seed,p.y*4.5,p.z*4.5));});
     parts.push(g);
     if(depth===0)return;
     for(let j=0;j<forks;j++){
@@ -81,7 +83,7 @@ export function coralBranches(origin,height,width,seed,color,tip='#cfe2f2',{thic
   for(let k=0;k<roots;k++){
     const a=k*2.39996,rim=Math.sqrt(k/roots),r=rim*height*spread;
     const root=base.clone().add(V(Math.cos(a)*r,-r*.25,Math.sin(a)*r*.7));
-    branch(root,V(Math.cos(a)*(.16+.60*rim),.95,Math.sin(a)*(.13+.48*rim)).normalize(),height*(.80-.30*rim+rng()*.14),height*thickness*(.9+rng()*.2),order);
+    branch(root,V(Math.cos(a)*(.16+.60*rim),.95,Math.sin(a)*(.13+.48*rim)).normalize(),height*(reach-.30*rim*reach/.8+rng()*vary),height*thickness*(.9+rng()*.2),order);
   }
   return merge(parts);
 }
@@ -100,7 +102,7 @@ export function seaFan(origin,height,seed,color,tip,{order=8,thickness=.085,stem
     }
     const g=tube(pts,rs,depth>3?5:3);
     // Polyp-bearing twigs carry the pale tissue; the shaded trunk keeps the bare axis colour.
-    tint(g,p=>c.clone().lerp(tipColor,grown*.85).multiplyScalar(.66+.34*grown+.08*noise(p.x*9,p.y*9,p.z*9)));
+    tint(g,p=>c.clone().lerp(tipColor,grown*.58).multiplyScalar(.66+.34*grown+.08*noise(p.x*9,p.y*9,p.z*9)));
     parts.push(g);
     if(depth===0)return;
     for(const s of [-1,1])limb(uu,vv,angle+curl+s*split*(.65+rng()*.75),len*(shorten+rng()*.10),radius*.86,depth-1);
@@ -126,16 +128,23 @@ export function massiveCoral(origin,scale,seed,color,groove,{ridges=14,relief=.1
   }
   g.computeVertexNormals();
   const c=new THREE.Color(color),v=new THREE.Color(groove);
+  // Tissue over a living skeleton is never one flat albedo: the ridge colour drifts across
+  // the colony and the valleys hold their own shade, which is what stops a massive coral
+  // reading as a painted ball.
   return tint(g,q=>{const x=(q.x-origin[0])/scale[0],y=(q.y-origin[1])/scale[1],z=(q.z-origin[2])/scale[2],n=Math.hypot(x,y,z)||1;
-    return v.clone().lerp(c,smoothstep(.06,.52,wall(x/n,y/n,z/n))).multiplyScalar(.72+.26*y/n);});
+    const drift=.86+.28*noise(q.x*2.4+seed,q.y*2.4,q.z*2.4)+.10*noise(q.x*9,q.y*9,q.z*9);
+    return v.clone().lerp(c,smoothstep(.06,.52,wall(x/n,y/n,z/n))).multiplyScalar((.72+.26*y/n)*drift);});
 }
 /** One zoanthid: a short column under a ring of tentacles around a vivid mouth.
- *  Rings run bottom-up; the material renders both sides so the cup lights either way. */
-export function polyp(center,radius,height,seed,mouth,disc,skirt){
+ *  Rings run bottom-up; the material renders both sides so the cup lights either way.
+ *  `lean` tips the whole polyp off vertical — no two neighbours in a living mat stand
+ *  at the same angle — and the base ring flares wider than the column so the mat meets
+ *  the rock in a skirt rather than hovering on a cut cylinder. */
+export function polyp(center,radius,height,seed,mouth,disc,skirt,lean=[0,0]){
   const tips=12,pos=[],col=[],idx=[],m=new THREE.Color(mouth),d=new THREE.Color(disc),s=new THREE.Color(skirt);
-  const rng=randomGenerator(seed),tx=(rng()-.5)*radius*.3,tz=(rng()-.5)*radius*.3;
+  const rng=randomGenerator(seed),tx=(rng()-.5)*radius*.3+lean[0]*height,tz=(rng()-.5)*radius*.3+lean[1]*height;
   const put=(x,y,z,c)=>{pos.push(x,y,z);col.push(c.r,c.g,c.b);};
-  const rings=[[.46,0,s.clone().multiplyScalar(.38),0],[1,.62,s,1],[.72,.86,d,0],[.30,.92,m,0]];
+  const rings=[[.72,0,s.clone().multiplyScalar(.30),0],[.52,.20,s.clone().multiplyScalar(.52),0],[1,.62,s,1],[.72,.86,d,0],[.30,.92,m,0]];
   for(const [r,h,c,star] of rings)
     for(let i=0;i<=tips;i++){const a=i/tips*Math.PI*2,f=star&&i%2?.52:1;
       put(center[0]+tx*h+Math.cos(a)*radius*r*f,center[1]+height*h,center[2]+tz*h+Math.sin(a)*radius*r*f,c);}

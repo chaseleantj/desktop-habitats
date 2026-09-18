@@ -190,21 +190,21 @@ const SKIN={
     skin=mix(skin,vec3(.013,.019,.023),1.-smoothstep(.021-aa,.021+aa,d));
     skin=mix(skin,vec3(.90,.895,.845),1.-smoothstep(-aa,aa,d));`,
   chromis:`
-    vec3 skin=mix(vec3(.016,.130,.100),vec3(.105,.560,.430),smoothstep(.03,.26,band));
-    skin=mix(skin,vec3(.400,.780,.620),smoothstep(.30,.58,band));
-    skin=mix(skin,vec3(.760,.880,.780),smoothstep(.70,1.,band));
+    vec3 skin=mix(vec3(.020,.115,.115),vec3(.105,.450,.400),smoothstep(.03,.26,band));
+    skin=mix(skin,vec3(.320,.630,.560),smoothstep(.30,.58,band));
+    skin=mix(skin,vec3(.640,.760,.720),smoothstep(.70,1.,band));
     // The dark pectoral-base spot, and the dusky wash carried onto the caudal peduncle.
     skin*=1.-.26*exp(-pow((u-.300)/.024,2.)-pow((band-.60)/.085,2.));
     skin*=1.-.20*smoothstep(.72,.97,u)*(1.-smoothstep(.55,.85,band));`,
   anthias:`
-    vec3 skin=mix(vec3(.46,.095,.085),vec3(.95,.300,.180),smoothstep(.04,.38,band));
-    skin=mix(skin,vec3(1.00,.620,.490),smoothstep(.54,.94,band));
+    vec3 skin=mix(vec3(.38,.105,.070),vec3(.78,.300,.140),smoothstep(.04,.38,band));
+    skin=mix(skin,vec3(.90,.560,.400),smoothstep(.54,.94,band));
     // The violet stripe runs from under the eye back to the pectoral base.
     float stripe=exp(-pow((band-(.360+.30*u))/.085,2.))*smoothstep(.02,.07,u)*(1.-smoothstep(.15,.36,u));
     skin=mix(skin,vec3(.36,.17,.50),stripe*.95);
     // The terminal male: magenta-red, with the pale flank patch behind the pectoral.
-    skin=mix(skin,mix(vec3(.60,.055,.20),vec3(.93,.28,.40),smoothstep(.08,.58,band)),vTrim.y);
-    skin=mix(skin,vec3(.96,.74,.72),vTrim.y*.75*exp(-pow((u-.42)/.095,2.)-pow((band-.28)/.15,2.)));`,
+    skin=mix(skin,mix(vec3(.40,.075,.155),vec3(.72,.27,.34),smoothstep(.08,.58,band)),vTrim.y);
+    skin=mix(skin,vec3(.78,.61,.58),vTrim.y*.55*exp(-pow((u-.42)/.095,2.)-pow((band-.28)/.15,2.)));`,
 };
 // Fin membranes: the pigment across the span, hinge (0) to free margin (1).
 const FINS={
@@ -216,8 +216,8 @@ const FINS={
     vec3 web=mix(vec3(.150,.470,.400),vec3(.32,.62,.56),span);
     web=mix(web,vec3(.055,.160,.210),smoothstep(.56,1.,span)*.8);`,
   anthias:`
-    vec3 web=mix(vec3(.95,.300,.115),vec3(1.00,.560,.030),smoothstep(.18,.80,span));
-    web=mix(web,vec3(.62,.14,.24),vTrim.y*.6);`,
+    vec3 web=mix(vec3(.78,.290,.100),vec3(.86,.520,.055),smoothstep(.18,.80,span));
+    web=mix(web,vec3(.48,.145,.205),vTrim.y*.6);`,
 };
 // Guanine platelets under the scales: a thin-film flare that only shows off normal.
 const SHEEN={clown:'vec3(.10,.075,.115)',chromis:'vec3(.055,.290,.330)',anthias:'vec3(.190,.085,.245)'};
@@ -254,7 +254,7 @@ function fishMaterial(kind) {
         skin=mix(skin,skin*.34,cleft*.8);
         // Imbricate scale rows, faded out once a scale falls under a pixel.
         vec2 cell=vec2(u*27.,band*11.);cell.x+=mod(floor(cell.y),2.)*.5;
-        skin*=1.-.075*smoothstep(.40,.50,length(fract(cell)-.5))*(1.-smoothstep(.32,.95,max(fwidth(cell.x),fwidth(cell.y))));
+        skin*=1.-.115*smoothstep(.40,.50,length(fract(cell)-.5))*(1.-smoothstep(.42,1.15,max(fwidth(cell.x),fwidth(cell.y))));
         // Countershading and a per-animal shift, so no two of a species read identical.
         skin*=1.-.34*(1.-smoothstep(0.,.11,band));
         skin*=vec3(.93+.14*vTrim.x,.96+.08*vTrim.x,1.03-.10*vTrim.x);
@@ -271,6 +271,9 @@ function fishMaterial(kind) {
         float r=length((vAnatomy.xy-vec2(${n(e.x)},${n(e.y)}))/${n(e.r)});
         diffuseColor.rgb=mix(vec3(.004,.006,.008),mix(vec3(.26,.20,.09),vec3(.07,.055,.03),r),smoothstep(.50,.64,r));
         diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.016,.024,.030),smoothstep(.84,.95,r));
+        // A wet cornea always carries one small catchlight; without it the eye is a
+        // printed dot, and at this size that reads before anything else does.
+        diffuseColor.rgb+=vec3(.62,.64,.66)*exp(-dot((vAnatomy.xy-vec2(${n(e.x+e.r*.30)},${n(e.y+e.r*.32)}))/${n(e.r*.27)},(vAnatomy.xy-vec2(${n(e.x+e.r*.30)},${n(e.y+e.r*.32)}))/${n(e.r*.27)}));
       }
     `,
     surfaceNormal:`
@@ -281,7 +284,7 @@ function fishMaterial(kind) {
         // The dorsal ridge and the belly keel are the two places the surface turns to face
         // the lamps square on; scaleless skin there is matt, or the back reads as a
         // painted white stripe under a tank light.
-        roughnessFactor=.38+.34*(1.-smoothstep(.05,.26,vSkinUv.y))+.18*smoothstep(.78,1.,vSkinUv.y);
+        roughnessFactor=.50+.26*(1.-smoothstep(.05,.26,vSkinUv.y))+.14*smoothstep(.78,1.,vSkinUv.y);
       }else if(vPart>2.5)roughnessFactor=.06;
       // A fin membrane is matt collagen: at a grazing angle a glossy one throws a hard
       // white line along the back that no fish has.

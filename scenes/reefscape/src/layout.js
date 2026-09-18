@@ -22,9 +22,11 @@ export const ROCKS=[
   [-.55,2.62,-1.20,1.65,.78,1.00],
   [1.25,2.98,-1.28,1.50,.72,.92],
 ];
-export const HOST={x:-3.95,y:2.69,z:1.0,radius:1.40};
-// The first station is a flat shoulder; the second is a sand/rubble grazing patch.
-export const STATIONS=[{x:2.23,y:.57,z:2.22},{x:-6.08,y:.75,z:2.44}];
+export const HOST={x:-3.95,y:2.69,z:1.0,radius:1.15};
+// Both stations are flat rock shoulders the cleaner shrimp advertise from. Their y is the
+// rock top there — the shrimp seat themselves off the baked surface, but a station buried
+// inside the rock would still send grazing fish to the wrong height.
+export const STATIONS=[{x:2.23,y:.57,z:2.22},{x:-5.15,y:.98,z:2.72}];
 // Coral envelopes fish steer around. The last four are the two gorgonian fans,
 // which stand well up into the swimming volume, and the arch lintel colonies.
 export const CORAL_BOUNDS=[[-6.0,4.35,-1.05,1.4,1.4,1.3],[6.0,4.2,-1.4,1.5,1.3,1.3],[4.4,3.1,-.2,1.65,.45,1.5],

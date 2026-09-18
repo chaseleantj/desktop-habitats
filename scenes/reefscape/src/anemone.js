@@ -5,6 +5,9 @@ import { tint } from './geometry.js';
 import { HOST } from './layout.js';
 
 export const TENTACLE_COUNT=440;
+// Crown lengths and girths below are written for a 1.4-unit disc; one factor rescales the
+// whole animal with the host's radius, so the proportions survive a change of size.
+const SCALE=HOST.radius/1.40;
 // Oral disc, rolled margin and column are one surface of revolution: t=1 is the
 // tentacle-bearing margin, past it the body rolls under and tucks into the rock.
 const MARGIN=1.50,DISC_Z=.78,DOME=.44,TUCK=1.45,BODY_T=Math.PI/MARGIN;
@@ -46,7 +49,7 @@ export function createAnemone(scene){
       return vec3(h.x,aShape.x*s-tentacleShorten()*s*s*s,h.y);}
     vec3 tentacleSlope(float s){vec2 h=tBend.xy*(3.*s-1.5*s*s)+tBend.zw*(4.*s*s*s);
       return vec3(h.x,aShape.x-3.*tentacleShorten()*s*s,h.y);}`;
-  const mat=underwater(new THREE.MeshStandardMaterial({color:'#ffffff',roughness:.44,metalness:0}),{
+  const mat=underwater(new THREE.MeshStandardMaterial({color:'#ffffff',roughness:.56,metalness:0}),{
     key:'tank-anemone',transmission:.24,vertex,
     normal:`tentacleSolve();vec3 slope=normalize(tentacleSlope(position.y));vec3 tx=normalize(vec3(slope.y,-slope.x,0.));vec3 tz=normalize(cross(tx,slope));objectNormal=normalize(tx*normal.x+slope*normal.y+tz*normal.z);`,
     begin:`float s=position.y;vec3 dir=normalize(tentacleSlope(s));vec3 ax=normalize(vec3(dir.y,-dir.x,0.));vec3 az=normalize(cross(ax,dir));
@@ -54,16 +57,16 @@ export function createAnemone(scene){
       vAxis=s;vTone=aShape.z;vPale=smoothstep(.83+.06*aShape.w,.95,s);`,
     fragment:`varying float vAxis;varying float vTone;varying float vPale;`,
     // Wet tissue: the pale bulbs carry the highlight, the shaft stays soft.
-    surfaceNormal:`roughnessFactor*=1.-.28*vPale;`,
+    surfaceNormal:`roughnessFactor*=1.-.15*vPale;`,
     // Kept below the tone mapper's shoulder: brighter tissue turns chalk, not rose.
     color:`float olive=smoothstep(.17,.03,vTone);
       vec3 shaft=mix(vec3(.055,.030,.018),vec3(.115,.050,.026),vTone);
-      vec3 flesh=mix(mix(vec3(.560,.170,.055),vec3(.760,.310,.170),vTone),vec3(.400,.290,.095),olive);
-      vec3 bulb=mix(mix(vec3(.700,.420,.310),vec3(.900,.650,.490),vTone),vec3(.640,.580,.360),olive);
+      vec3 flesh=mix(mix(vec3(.470,.150,.060),vec3(.740,.300,.150),vTone),vec3(.375,.275,.100),olive);
+      vec3 bulb=mix(mix(vec3(.600,.330,.235),vec3(.820,.545,.395),vTone),vec3(.575,.510,.315),olive);
       // Occlusion inside the crown: low and near the axis is buried, the drooping
       // outer tentacles stay lit. Cheaper and steadier than shadowing 440 instances.
       float buried=(1.-smoothstep(.95,1.85,length((vReefWorld.xz-vec2(${HOST.x.toFixed(3)},${HOST.z.toFixed(3)}))/vec2(1.,${DISC_Z}))))*(1.-smoothstep(${(HOST.y+.15).toFixed(3)},${(HOST.y+1.15).toFixed(3)},vReefWorld.y));
-      diffuseColor.rgb=mix(mix(shaft,flesh,smoothstep(.03,.30,vAxis)),bulb,vPale)*(.40+.60*smoothstep(0.,.55,vAxis))*(1.-.60*buried);`
+      diffuseColor.rgb=mix(mix(shaft,flesh,smoothstep(.03,.30,vAxis)),bulb,vPale)*(.40+.60*smoothstep(0.,.55,vAxis))*(1.-.72*buried);`
   });
   const tentacles=new THREE.InstancedMesh(geo,mat,TENTACLE_COUNT),dummy=new THREE.Object3D(),up=new THREE.Vector3(0,1,0);
   const root=new THREE.Vector3(),normal=new THREE.Vector3(),bend=new THREE.Vector3(),curl=new THREE.Vector3(),inverse=new THREE.Quaternion();
@@ -72,7 +75,7 @@ export function createAnemone(scene){
     // radius- and angle-spread subset instead of only the inner tentacles.
     const sample=(i*317)%TENTACLE_COUNT,rim=Math.sqrt((sample+.5)/TENTACLE_COUNT),a=sample*2.39996322973+(rng()-.5)*.20;
     // Crown lobes: a living anemone is never a circle of equal-length tentacles.
-    const len=(.47+rng()*.58+(1-rim)*.56)*(1+.17*Math.sin(a*3+1.1)+.09*Math.sin(a*7-.4));
+    const len=SCALE*(.47+rng()*.58+(1-rim)*.56)*(1+.17*Math.sin(a*3+1.1)+.09*Math.sin(a*7-.4));
     // Roots sit on the disc but lean on their own arc: the body's margin is far
     // steeper than a living disc, which would splay the outer rows flat.
     const tilt=Math.pow(rim,1.5)*.92+(rng()-.5)*.30;
@@ -87,7 +90,7 @@ export function createAnemone(scene){
     bend.set(Math.cos(lean)*flare,-(.16+.45*rim)*len,Math.sin(lean)*flare*.92).applyQuaternion(inverse);
     curl.set(Math.cos(swing)*tip,-(.20+.45*rng())*len,Math.sin(swing)*tip*.9).applyQuaternion(inverse);
     // aShape: length, girth, tone, plump (bulb width and how far down the pale runs).
-    shapes.set([len,.85+rng()*.75,rng(),rng()],i*4);
+    shapes.set([len,SCALE*(.85+rng()*.75),rng(),rng()],i*4);
     curves.set([bend.x,bend.z,curl.x,curl.z],i*4);
   }
   geo.setAttribute('aShape',new THREE.InstancedBufferAttribute(shapes,4));geo.setAttribute('aCurve',new THREE.InstancedBufferAttribute(curves,4));
@@ -103,6 +106,6 @@ export function createAnemone(scene){
     return mouth.clone().lerp(oral,smoothstep(.04,.22,t)).lerp(col,smoothstep(.92,1.45,t))
       .multiplyScalar((1+.11*Math.sin(a*26)*smoothstep(.10,.50,t)*(1-smoothstep(.75,1.05,t)))*(1-.62*smoothstep(1.,1.6,t)));});
   const body=new THREE.Mesh(bodyGeo,underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.62}),{key:'anemone-body',transmission:.10}));
-  body.receiveShadow=true;scene.add(body);
+  body.castShadow=body.receiveShadow=true;scene.add(body);
   return {tentacles,count:TENTACLE_COUNT};
 }

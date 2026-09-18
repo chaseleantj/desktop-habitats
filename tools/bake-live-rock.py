@@ -52,15 +52,30 @@ for ri,r in enumerate(rocks):
             points=(v+(nm*.035+d*dist)/scale+span)/step
             val=map_coordinates(f,points.T,order=1,mode='constant',cval=-1)
             ao-=np.maximum(0,np.minimum(1,val*6))*.056
-    # Quiet cream limestone under discontinuous plum coralline and olive films.
+    # Cream limestone crusted with mauve coralline and filmed with olive algae.
+    # Two patch scales, so the crust breaks up instead of painting smooth blotches.
     patch=np.sin(wp[:,0]*5.8+np.sin(wp[:,2]*7.7))*np.sin(wp[:,1]*6.9+wp[:,2]*2)
+    crust=np.sin(wp[:,0]*13.5+2.1*np.sin(wp[:,1]*9.))*np.sin(wp[:,2]*12.2+1.7*np.sin(wp[:,0]*8.5))
     fine=np.sin(wp[:,0]*21+wp[:,2]*16)*np.sin(wp[:,1]*25+wp[:,2]*13)
-    cream=np.array([.225,.205,.173]); plum=np.array([.215,.10,.185]); olive=np.array([.12,.135,.075])
-    blend=np.clip((patch+.08)*1.2,0,.80)[:,None]
-    co=cream*(1-blend)+plum*blend
-    algae=np.clip((-patch-.40)*1.0,0,.32)[:,None]
+    speck=np.sin(wp[:,0]*17.3+wp[:,1]*14.1)*np.sin(wp[:,2]*15.7-wp[:,1]*12.9)
+    up=np.clip(nm[:,1],0,1)
+    # Mature live rock is coralline first and bare limestone second: under a blue-white
+    # reef lamp the crust is what gives it its violet cast, so it covers most of the
+    # surface here and the limestone shows through only where the crust breaks. Real
+    # coralline runs from deep violet to rose within one rock, so the crust carries its
+    # own slow hue drift: neighbouring patches differ, which is where the colour in a
+    # photograph of live rock actually comes from.
+    hue=np.sin(wp[:,0]*3.1+wp[:,2]*2.3)*np.sin(wp[:,1]*2.7-wp[:,0]*1.9)
+    cream=np.array([.425,.378,.298]); violet=np.array([.255,.098,.290]); rose=np.array([.340,.135,.180])
+    olive=np.array([.150,.185,.070])
+    crustco=violet*(1-np.clip(hue*.9+.45,0,1))[:,None]+rose*np.clip(hue*.9+.45,0,1)[:,None]
+    # Coralline prefers the shaded flanks, algae film the lit upper faces. The crust ends
+    # in a hard margin, not a gradient, so patches read as patches.
+    blend=np.clip((patch*.85+crust*.70+.18)*(1-.40*up)*1.05-.06,0,.80)[:,None]
+    co=cream*(1-blend)+crustco*blend
+    algae=np.clip((-patch*.80-crust*.50+.06)*1.25*(.40+1.10*up),0,.58)[:,None]
     co=co*(1-algae)+olive*algae
-    co*=((.94+fine*.10)*ao*(.64+.36*np.clip((nm[:,1]+.55),0,1)))[:,None]
+    co*=((.90+fine*.10+speck*.075)*ao*(.62+.38*np.clip((nm[:,1]+.55),0,1)))[:,None]
     pos.append(wp.astype('<f4'));norms.append(nm.astype('<f4'));colors.append(np.clip(co*255,0,255).astype('u1'))
     faces.append((fc[:, ::-1]+offset).astype('<u4'));offset+=len(v)
     print(f'rock {ri+1}: {len(v):,} vertices / {len(fc):,} triangles',flush=True)

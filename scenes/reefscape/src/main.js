@@ -30,12 +30,12 @@ function reportError(error){console.error(error);loading.hidden=true;const box=d
 
 async function start(){
   const renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:false,powerPreference:'low-power',preserveDrawingBuffer:false});
-  renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.10;
+  renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.info.autoReset=false;
   const scene=new THREE.Scene();scene.background=new THREE.Color('#04101d');
   // Display water is clear, but a faint blue veil still builds along the viewing ray, so the
   // back wall and rear corals sit behind the foreground instead of on the same plane.
-  scene.fog=new THREE.FogExp2('#0a1f36',.022);
+  scene.fog=new THREE.FogExp2('#102b47',.027);
   const camera=new THREE.PerspectiveCamera(36,16/9,.08,140);
   const views={
     wide:{position:[0,4.3,18.2],target:[0,3.35,0],fov:25.8},
@@ -61,7 +61,7 @@ async function start(){
           float difference=center-distanceAt(vUv+vec2(cos(a),sin(a))*radius*aoRadiusScale/size);
           occlusion+=smoothstep(.012,.13,difference)*(1.-smoothstep(.2,.8,difference));
         }
-        color*=1.-occlusion*${(.024*12/AO_SAMPLES).toFixed(8)};
+        color*=1.-occlusion*${(.042*12/AO_SAMPLES).toFixed(8)};
         float vignette=dot((vUv-.5)*vec2(1.,.85),(vUv-.5)*vec2(1.,.85));color*=1.-vignette*.16;
         gl_FragColor=vec4(color,1.);
         #include <tonemapping_fragment>
@@ -69,19 +69,21 @@ async function start(){
       }`});
   postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),post));
   // Reef LEDs: a cool white key with a violet actinic wash from above. Warm tones come only
-  // from the animals and coral tissue themselves.
-  scene.add(new THREE.HemisphereLight('#87a3dc','#1c2130',.42));
-  const sun=new THREE.DirectionalLight('#f3eee2',3.1);sun.position.set(-3.5,13,4.5);sun.target.position.set(0,0,0);sun.castShadow=true;
-  sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-12,right:12,top:10,bottom:-9,near:1,far:43});sun.shadow.bias=-.0007;sun.shadow.normalBias=.018;sun.shadow.radius=2;
+  // from the animals and coral tissue themselves. The ground half of the hemisphere stands
+  // in for the bounce off the bright aragonite bed, so the shaded side of a coral branch
+  // reads as tissue in shadow rather than a black stick.
+  scene.add(new THREE.HemisphereLight('#8ca6de','#564f3c',.60));
+  const sun=new THREE.DirectionalLight('#f6f0e0',3.35);sun.position.set(-3.5,13,4.5);sun.target.position.set(0,0,0);sun.castShadow=true;
+  sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-12,right:12,top:10,bottom:-9,near:1,far:43});sun.shadow.bias=-.0007;sun.shadow.normalBias=.018;sun.shadow.radius=2;sun.shadow.intensity=.80;
   scene.add(sun,sun.target);
-  const actinic=new THREE.DirectionalLight('#4f7dff',.55);actinic.position.set(3,12,-2);scene.add(actinic);
+  const actinic=new THREE.DirectionalLight('#4f7dff',.72);actinic.position.set(3,12,-2);scene.add(actinic);
   const bounce=new THREE.DirectionalLight('#8fa4d8',.28);bounce.position.set(3,6,8);scene.add(bounce);
   const envData=new Uint8Array(128*64*4);
   for(let y=0;y<64;y++)for(let x=0;x<128;x++){
     const top=1-y/63,glow=Math.exp(-(((top-.86)/.13)**2));const i=(y*128+x)*4;
     envData[i]=6+glow*185;envData[i+1]=12+glow*210;envData[i+2]=26+glow*229;envData[i+3]=255;
   }
-  const environment=new THREE.DataTexture(envData,128,64);environment.mapping=THREE.EquirectangularReflectionMapping;environment.colorSpace=THREE.SRGBColorSpace;environment.needsUpdate=true;scene.environment=environment;scene.environmentIntensity=.20;
+  const environment=new THREE.DataTexture(envData,128,64);environment.mapping=THREE.EquirectangularReflectionMapping;environment.colorSpace=THREE.SRGBColorSpace;environment.needsUpdate=true;scene.environment=environment;scene.environmentIntensity=.38;
   createBackdrop(scene);await createTerrain(scene);await createCorals(scene);const anemone=createAnemone(scene);
   const simulation=new ReefSimulation();
   const fishSchool=createFishSchool(scene,simulation);

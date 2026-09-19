@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { register } from 'node:module';
 register('../../riverscape/tests/three-loader.mjs', import.meta.url);
-const { ReefSimulation, FIXED_STEP, POPULATION }=await import('../src/simulation.js');
+const { ReefSimulation, FIXED_STEP, POPULATION, SHRIMP }=await import('../src/simulation.js');
 const { currentAt,responseAt,WAVES,SURFACE }=await import('../src/water.js');
 const { HOST }=await import('../src/terrain.js');
 const { THICKETS }=await import('../src/layout.js');
@@ -19,16 +19,17 @@ const goldies=sim.fish.filter(f=>f.kind==='anthias');
 const male=goldies.find(f=>!f.rank),hens=goldies.filter(f=>f.rank);
 assert.ok(male.size/(hens.reduce((s,f)=>s+f.size,0)/hens.length)>1.35,'Terminal male must outsize the harem');
 let maxHome=0,nearThicket=0,chromisSamples=0,maleBelow=0,samples=0,cleaned=0,displayed=0,henDisplayed=0,upcurrent=0;
-let shrimpRange=0,shrimpWalked=0,advertising=0;
+let shrimpRange=[0,0],shrimpHome=[0,0],shrimpWalked=0,advertising=0;
 const shrimpWas=sim.shrimp.map(s=>s.position.clone());
 for(let i=0;i<60*180;i++){
   if(i===60*10||i===60*32)sim.feed(-1.5,1.3);
   sim.step(FIXED_STEP);
   for(const f of sim.fish){if(f.state==='clean')cleaned++;if(f.state==='display')f.rank?henDisplayed++:displayed++;}
-  // A cleaner shrimp is a station animal: it must work its own shoulder rather than set off
-  // across the tank, and every channel the vertex shaders read has to stay finite.
+  // A cleaner shrimp is a station animal that takes excursions: it works its own shoulder,
+  // leaves it for the sand or the next rock now and then and comes back, and every channel
+  // the vertex shaders read has to stay finite.
   sim.shrimp.forEach((s,i)=>{
-    shrimpRange=Math.max(shrimpRange,Math.hypot(s.position.x-s.home.x,s.position.z-s.home.z));
+    const away=Math.hypot(s.position.x-s.home.x,s.position.z-s.home.z);shrimpRange[i]=Math.max(shrimpRange[i],away);if(away<SHRIMP.range+.1)shrimpHome[i]++;
     shrimpWalked+=Math.hypot(s.position.x-shrimpWas[i].x,s.position.z-shrimpWas[i].z);shrimpWas[i].copy(s.position);
     assert.ok([s.position.x,s.position.y,s.position.z,s.yaw,s.step,s.walk,s.pick,s.sway,s.signal,s.flick,s.reach,s.curl,s.rhythm].every(Number.isFinite),'Shrimp state finite');
   });
@@ -64,9 +65,14 @@ assert.ok(aligned/moving>.85,`Fish swim along their heading ${aligned}/${moving}
 // glide, so no species beats more than half the time or glides all of it.
 for(const kind of ['chromis','anthias']){const of=sim.fish.filter(f=>f.kind===kind);let beats=0,n=0;for(let i=0;i<60*30;i++){sim.step(FIXED_STEP);for(const f of of){n++;if(f.beat)beats++;}}assert.ok(beats/n>.12&&beats/n<.55,`${kind} bout fraction ${(beats/n).toFixed(2)}`);}
 assert.ok(cleaned>0,'Fish must visit the cleaner shrimp');
-// Stop-and-go over its own patch: it has to cover real ground in three minutes and still
-// never leave the shoulder, and it has to be advertising often enough for a fish to come.
-assert.ok(shrimpWalked>3&&shrimpRange<.60,`Shrimp walked ${shrimpWalked.toFixed(2)} u, straying ${shrimpRange.toFixed(2)} u from its station`);
+// Stop-and-go over its own patch, and out and back: in three minutes each shrimp has to cover
+// real ground, leave its shoulder at least once, never go further than an excursion allows,
+// and still spend most of its time at the station, advertising often enough for a fish to come.
+assert.ok(shrimpWalked>3,`Shrimp walked only ${shrimpWalked.toFixed(2)} u`);
+sim.shrimp.forEach((s,i)=>{
+  assert.ok(shrimpRange[i]>.9&&shrimpRange[i]<SHRIMP.roam+.2,`Shrimp ${i} strayed ${shrimpRange[i].toFixed(2)} u from its station`);
+  assert.ok(shrimpHome[i]/(60*180)>.55,`Shrimp ${i} was at its station only ${(100*shrimpHome[i]/(60*180)).toFixed(0)}% of the time`);
+});
 assert.ok(advertising/(60*180)>.5,`A shrimp was advertising only ${(100*advertising/(60*180)).toFixed(0)}% of the time`);
 assert.ok(displayed>0&&henDisplayed===0,`U-swim is male-only: male ${displayed}, females ${henDisplayed}`);
 assert.ok(upcurrent>0,'The anthias must hold up-current of their promontory');

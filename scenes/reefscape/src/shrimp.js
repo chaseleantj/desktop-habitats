@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { merge, tint, tube } from './geometry.js';
 import { underwater, responseGLSL } from './water.js';
 import { supportHeight } from './terrain.js';
+import { SHRIMP, seatShrimp } from './simulation.js';
+import { clamp } from './math.js';
 const V=(x,y,z)=>new THREE.Vector3(x,y,z);
 function sphere(p,s,c){const g=new THREE.SphereGeometry(1,16,10);g.scale(...s);g.translate(...p);tint(g,()=>new THREE.Color(c));return g;}
 // Nothing on the animal is textured, so its appendages carry their animation parameters in
@@ -9,13 +11,15 @@ function sphere(p,s,c){const g=new THREE.SphereGeometry(1,16,10);g.scale(...s);g
 // are the two chelate pairs, 2-4 the ambulatory pereiopods, 5 the third maxillipeds, 6-10
 // the pleopods front to back, and on the antenna mesh 0 is the long flagellum.
 function limb(points,radii,code){const g=tube(points,radii,5),uv=g.attributes.uv;for(let i=0;i<uv.count;i++)uv.setX(i,code);return g;}
-// How far the body rides over the rock — an eighth of its length, which is where a caridean
-// carries itself. It is also the lever it rocks about, since a shrimp leaning on its legs
-// pivots at its feet and not at its middle.
-const SEAT=.132;
-// Roughly the width of the stance, so the slope is read across the feet. On a shoulder that
-// differs enough from the slope under the animal's middle to hang its outside legs in water.
-const STANCE=.20;
+// Rearing up at a client pivots on the rear walking pair, so the head lifts and the tail
+// settles toward the rock, instead of the whole animal see-sawing about its middle.
+const PIVOT=V(-.10,-.15,0);
+// Where the walking pairs' feet end (SHRIMP.feet, which the simulation tests footholds
+// with). The seat reads the ground under them, and each leg then stretches or folds by up
+// to SHRIMP.stretch to put its own foot on that ground; past that an outside foot over a
+// drop simply hangs, as it does on a real shoulder.
+const foot=(j,sign)=>{const [a,y,b]=SHRIMP.feet[j-2];return V(a,y,sign*b);};
+const FEET=[2,3,4].flatMap(j=>[-1,1].map(sign=>foot(j,sign)));
 // The caridoid escape folds the abdomen under the thorax about the joint behind the
 // carapace until the tail fan meets it — 25 degrees between the two, in Arnott's high-speed
 // frames. Every mesh carrying abdominal parts bends about it, so the pleopods come with.
@@ -24,7 +28,7 @@ const FLEX=`float behind=max(0.,-.13-position.x),bend=shrimpPose.w*4.0*behind;
   transformed.xy=vec2(-.13+arm.x*cos(bend)-arm.y*sin(bend),.145+arm.x*sin(bend)+arm.y*cos(bend));`;
 
 export function createShrimp(scene, simulation) {
-  const models=[],up=V(0,1,0),ahead=V(1,0,0),across=V(0,0,1),normal=V(0,1,0),seat=V(0,0,0);
+  const models=[],underside=[],up=V(0,1,0),ahead=V(1,0,0),across=V(0,0,1),seat=V(0,0,0),point=V(0,0,0);
   const tilt=new THREE.Quaternion(),turn=new THREE.Quaternion(),rock=new THREE.Quaternion(),rear=new THREE.Quaternion();
   for(let index=0;index<simulation.shrimp.length;index++) {
     const root=new THREE.Group(),bodyParts=[],legs=[],antennae=[];
@@ -58,7 +62,7 @@ export function createShrimp(scene, simulation) {
         // the outside feet on rock rather than hanging over the drop.
         const x=.18-j*.068;
         const [path,radii]=j<2?carried[j]
-          :[[V(x,.105,sign*.042),V(x-.06,.06,sign*(.15+j*.010)),V(x+.10-j*.026,-.15,sign*(.20+j*.020))],[.009,.008,.003]];
+          :[[V(x,.105,sign*.042),V(x-.06,.06,sign*(.15+j*.010)),foot(j,sign)],[.009,.008,.003]];
         legs.push(tint(limb(path,radii,j),()=>new THREE.Color(j<2?'#e9cca8':'#e3b597')));
       }
       // Third maxillipeds under the head: the grooming appendages, small and never still.
@@ -83,13 +87,16 @@ export function createShrimp(scene, simulation) {
     }
     // One wrapped two-second clock drives every small rhythm on the animal, so their rates
     // are whole multiples of 0.5 Hz and no phase drifts however long the scene has run.
-    const gait={value:new THREE.Vector4(0,0,0,0)},pose={value:new THREE.Vector4(0,0,0,0)};
-    const drive=material=>{const inner=material.onBeforeCompile;material.onBeforeCompile=s=>{inner(s);s.uniforms.shrimpGait=gait;s.uniforms.shrimpPose=pose;};return material;};
+    const gait={value:new THREE.Vector4(0,0,0,0)},pose={value:new THREE.Vector4(0,0,0,0)},feet={value:FEET.map(()=>0)};
+    const drive=material=>{const inner=material.onBeforeCompile;material.onBeforeCompile=s=>{inner(s);s.uniforms.shrimpGait=gait;s.uniforms.shrimpPose=pose;s.uniforms.shrimpFeet=feet;};return material;};
     const bodyMat=drive(underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.46}),{
       key:'shrimp-shell',transmission:.045,vertex:'uniform vec4 shrimpPose;',begin:FLEX}));
-    root.add(new THREE.Mesh(merge(bodyParts),bodyMat));
+    const body=merge(bodyParts);root.add(new THREE.Mesh(body,bodyMat));
+    // The belly line, read off the mesh itself: the lowest vertex in each tenth of the body's
+    // length, tail fan to rostrum, is what has to clear the rock.
+    if(!underside.length){const p=body.attributes.position,low=new Map();for(let k=0;k<p.count;k++){const b=Math.round(p.getX(k)*10);if(!low.has(b)||p.getY(k)<low.get(b).y)low.set(b,V(p.getX(k),p.getY(k),p.getZ(k)));}underside.push(...low.values());}
     const legMat=drive(underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.66}),{
-      key:'shrimp-legs',vertex:'uniform vec4 shrimpGait;uniform vec4 shrimpPose;',
+      key:'shrimp-legs',vertex:'uniform vec4 shrimpGait;uniform vec4 shrimpPose;uniform float shrimpFeet[6];',
       begin:`float code=uv.x,along=uv.y,side=sign(position.z),tip=along*(.30+.70*along);
         if(code<4.5){
           // The wave runs from the back pair forward, a quarter cycle between neighbours at
@@ -102,6 +109,10 @@ export function createShrimp(scene, simulation) {
           // Half of SHRIMP.stride in simulation.js, which is what stops the feet skating.
           transformed.x+=mix(2.*u-1.,1.-2.*u,stance)*.0475*drive;
           transformed.y+=(1.-stance)*sin(3.14159*u)*.036*drive;
+          // Each walking foot then reaches for the ground actually under it, down over a
+          // hollow and up over a lump, so the leg stands on the rock instead of through it.
+          // The reach is measured up the world; this is the world's up in the leg's frame.
+          if(code>1.5)transformed+=vec3(modelMatrix[0][1],modelMatrix[1][1],modelMatrix[2][1])*shrimpFeet[(int(code+.5)-2)*2+(side>0.?1:0)]*tip;
           // The legs draw up under the animal as the abdomen fires.
           transformed+=vec3(-.03,.05,0.)*shrimpPose.w*tip;
         }
@@ -149,21 +160,29 @@ export function createShrimp(scene, simulation) {
         transformed.y+=(sweep*.11-snap*.11+flow.x*.15+shrimpPose.z*(.30+.12*sin(12.566*shrimpGait.w)))*tip;
         transformed.x-=(snap*.035+(1.-shrimpPose.x)*.09*antenna+shrimpPose.w*.22)*tip;`}));
     root.add(new THREE.Mesh(merge(antennae),antennaMat));
-    scene.add(root);models.push({root,gait,pose});
+    scene.add(root);models.push({root,gait,pose,feet});
   }
-  return {update(){models.forEach((m,i)=>{const s=simulation.shrimp[i],x=s.position.x,z=s.position.z;
-    normal.set(-THREE.MathUtils.clamp((supportHeight(x+STANCE,z)-supportHeight(x-STANCE,z))/(2*STANCE),-.38,.38),1,
-      -THREE.MathUtils.clamp((supportHeight(x,z+STANCE)-supportHeight(x,z-STANCE))/(2*STANCE),-.38,.38)).normalize();
-    tilt.setFromUnitVectors(up,normal);turn.setFromAxisAngle(up,s.yaw);
-    // The body rock that goes with the antennal whip is a lean on the legs, and reaching for
-    // a client lifts the whole front of the animal, so both are rotations of the body rather
-    // than offsets bolted onto it.
-    rock.setFromAxisAngle(ahead,s.sway*.28);rear.setFromAxisAngle(across,s.reach*.26);
-    m.root.quaternion.copy(tilt).multiply(turn).multiply(rock).multiply(rear);
-    // Feet on the rock: every one of those rotations turns about the contact patch, and the
-    // tail flip is the one thing that takes the animal off it.
-    seat.set(0,SEAT+s.curl*.26,0).applyQuaternion(m.root.quaternion);
-    m.root.position.set(x+seat.x,supportHeight(x,z)+seat.y,z+seat.z);
+  return {update(){models.forEach((m,i)=>{const s=simulation.shrimp[i],pose=seatShrimp(s.position.x,s.position.z,s.yaw);
+    // The seat is the simulation's own (`seatShrimp`): the pitch the ground under the body's
+    // length allows and the roll of the line its feet stand on, as separate turns, stood up
+    // over what no pitch clears. The body rock that goes with the antennal whip is a lean on
+    // the legs, and reaching for a client lifts the whole front of the animal, so both are
+    // rotations of the body rather than offsets bolted onto it.
+    tilt.setFromAxisAngle(across,pose.pitch);turn.setFromAxisAngle(up,s.yaw);
+    rock.setFromAxisAngle(ahead,s.sway*.28-pose.roll);rear.setFromAxisAngle(across,s.reach*.26);
+    m.root.quaternion.copy(turn).multiply(tilt).multiply(rock);
+    // Every one of those rotations turns about the contact patch, the rear one about the rear
+    // pair, and the tail flip is the one thing that takes the animal off it.
+    seat.set(0,s.curl*.26,0).add(PIVOT).sub(point.copy(PIVOT).applyQuaternion(rear)).applyQuaternion(m.root.quaternion);
+    m.root.quaternion.multiply(rear);
+    m.root.position.set(pose.root[0]+seat.x,pose.root[1]+seat.y,pose.root[2]+seat.z);
+    // Then the belly line itself, read off the mesh, against the relief: whatever the chord
+    // in bodyFit missed lifts the body the rest of the way, within what the legs have.
+    let extra=0;
+    for(const u of underside){point.copy(u).applyQuaternion(m.root.quaternion).add(m.root.position);extra=Math.max(extra,supportHeight(point.x,point.z)-point.y);}
+    m.root.position.y+=Math.max(0,Math.min(SHRIMP.lift-pose.lift,extra));
+    // Each walking foot then reaches for the ground actually under it.
+    FEET.forEach((foot,k)=>{point.copy(foot).applyQuaternion(m.root.quaternion).add(m.root.position);m.feet.value[k]=clamp(supportHeight(point.x,point.z)-point.y,-SHRIMP.stretch,SHRIMP.stretch);});
     m.gait.value.set(s.step,s.walk,s.pick,s.rhythm);m.pose.value.set(s.signal,s.flick,s.reach,s.curl);
   });},models};
 }

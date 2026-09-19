@@ -54,7 +54,7 @@ const GAIT={
 // ethogram — long spells advertising, short repositioning walks, picking in between — run
 // at rates borrowed from decapods that have been measured: a few centimetres a second, a
 // step every 0.4 s, a tail flip of 130 ms that is 47% flexion.
-const SHRIMP={
+export const SHRIMP={
   wrap:2,        // s; every appendage rhythm in shrimp.js is a whole multiple of 0.5 Hz off this clock
   speed:.24,     // units/s over the rock
   stride:.095,   // ground covered per leg cycle. The leg shader swings each foot half of it
@@ -63,10 +63,19 @@ const SHRIMP={
   square:1.2,    // rad of heading error it will walk through: a crayfish turns by shortening
                  // the strides on one side, not by pivoting, so only a target behind it
                  // has to be squared up to first
-  range:.58,     // how far from its station it will wander
+  range:.58,     // how far from its station it works the shoulder
+  roam:2.0,      // and how far an excursion may take it, onto the sand or the next rock
+  outing:45,     // s at home between excursions, plus up to as much again
+  graze:5,       // s picking at the far end of one, plus up to four more
   arrive:.04,
-  drop:.20,      // it refuses a foothold this far below its own shoulder
-  grade:.62,     // or on ground this steep
+  drop:.20,      // on the shoulder it refuses a foothold this far below its own station
+  grade:.62,     // or on ground this steep; on an excursion it will climb a flank of
+  flank:2.1,     // this slope, which is what gets it down to the sand and back up
+  lift:.22,      // how far it will stand up on its legs to carry its belly over a lump
+  stretch:.14,   // how far a leg stretches or folds to put its foot on the ground under it
+  lean:.9,       // the most the body rolls with the ground across it; the legs take up the rest
+  seat:.132,     // how high the body rides over its feet: an eighth of its length, where a caridean carries itself
+  feet:[[.092,-.15,.24],[-.002,-.15,.26],[-.096,-.15,.28]], // where the three walking pairs' feet end: ahead of the seat, below it, out to each side; shrimp.js draws the legs to them
   reach:1.35,    // units at which a client overhead is close enough to work on
   under:.16,     // how nearly beneath it the animal puts itself
   hold:.25,      // s a departed client goes on counting as one
@@ -82,6 +91,42 @@ const SHRIMP={
   jet:2.4,       // units/s backwards while the abdomen is firing
   unroll:.62,    // how fast the abdomen straightens once the bout is over
 };
+// The body is a rigid length standing on feet a hand's breadth apart, and what the ground
+// does under the rest of it decides how it stands. CHORD is that length as offsets along and
+// across the heading from the feet, with how high the belly rides over the feet there: the
+// tail fan low behind and as wide as it is long, the carapace and rostrum higher ahead.
+// bodyFit finds the pitch that keeps the whole line out of the ground, nearest the ground's
+// own slope, and how far the animal must stand up on its legs where no pitch will do — at
+// the foot of a flank, say, with the tail still on the slope as the head reaches the sand.
+// The simulation refuses a place that needs more standing up than the legs have; shrimp.js
+// seats the model with the same answer.
+const CHORD=[[-.62,0,.10],[-.50,-.10,.10],[-.50,.10,.10],[-.45,0,.10],[-.30,0,.10],[-.15,0,.10],[.15,0,.18],[.30,0,.22],[.45,0,.28]];
+export function bodyFit(x,z,yaw){
+  const h0=supportHeight(x,z),cx=Math.cos(yaw),cz=-Math.sin(yaw),sx=Math.sin(yaw),sz=Math.cos(yaw),steep=SHRIMP.flank;
+  const at=CHORD.map(([a,b,c])=>{const h=supportHeight(x+cx*a+sx*b,z+cz*a+sz*b);return [a,h-c-h0,h];});
+  // Each sample ahead is a floor under the pitch and each one behind a ceiling over it, and
+  // the pitch itself is bounded by the steepest flank; where a floor stands above a ceiling,
+  // or above what that bound allows, the body rises until they meet.
+  let lift=0,low=-Infinity,high=Infinity;
+  for(const [a,d] of at)lift=Math.max(lift,d-steep*Math.abs(a));
+  for(const [af,df] of at)if(af>0)for(const [ar,dr] of at)if(ar<0)lift=Math.max(lift,(dr*af-df*ar)/(af-ar));
+  for(const [a,d] of at)if(a>0)low=Math.max(low,(d-lift)/a);else high=Math.min(high,(d-lift)/a);
+  const slope=(at[8][2]-at[3][2]+at[6][2]-at[5][2])/1.2;
+  return {pitch:clamp(clamp(slope,low,high),-steep,steep),lift};
+}
+// How the animal sits at (x,z) facing yaw: the body's pitch and roll as angles, how far it
+// stands up (`bodyFit`), where its seat is and where each walking foot comes to rest before
+// the leg reaches for the ground. The same seat draws the model in shrimp.js and tests a
+// foothold here, so what is refused is exactly what would have been drawn inside the rock.
+export function seatShrimp(x,z,yaw){
+  const fit=bodyFit(x,z,yaw),cx=Math.cos(yaw),cz=-Math.sin(yaw),sx=Math.sin(yaw),sz=Math.cos(yaw),w=SHRIMP.feet[2][2];
+  const roll=Math.atan(clamp((supportHeight(x+sx*w,z+sz*w)-supportHeight(x-sx*w,z-sz*w))/(2*w),-SHRIMP.lean,SHRIMP.lean)),pitch=Math.atan(fit.pitch);
+  const h=supportHeight(x,z)+fit.lift,cr=Math.cos(roll),sr=Math.sin(roll),cp=Math.cos(pitch),sp=Math.sin(pitch);
+  // A point of the body (ahead, up, across the seat): rolled about its length, pitched about
+  // its width, turned onto the heading and set on the ground under the seat.
+  const place=(a,y,b)=>{const ry=y*cr+b*sr,rz=b*cr-y*sr,px=a*cp-ry*sp,py=a*sp+ry*cp;return [x+px*cx+rz*sx,h+py,z+px*cz+rz*sz];};
+  return {pitch,roll,lift:fit.lift,root:place(0,SHRIMP.seat,0),feet:SHRIMP.feet.flatMap(([a,y,b])=>[-b,b].map(side=>place(a,SHRIMP.seat+y,side)))};
+}
 
 export class ReefSimulation {
   constructor(seed=36719) {
@@ -103,7 +148,7 @@ export class ReefSimulation {
     // bout shift nineteen fish trajectories with it, which is a trap rather than a coupling.
     this.shrimpRandom=randomGenerator(seed^0x5bf03635);
     this.shrimp=STATIONS.map((p,i)=>({position:V(p.x,p.y,p.z),home:V(p.x,p.y,p.z),goal:V(p.x,p.y,p.z),yaw:i===0?.30:2.8,state:'advertise',timer:3+i*2,
-      rhythm:i*.7,step:0,walk:0,pick:0,reach:0,curl:0,sway:0,signal:0,flick:0,sniff:0,burst:1+i,reverse:false}));
+      rhythm:i*.7,step:0,walk:0,pick:0,reach:0,curl:0,sway:0,signal:0,flick:0,sniff:0,burst:1+i,reverse:false,out:0,away:SHRIMP.outing*(.5+.8*this.shrimpRandom())}));
   }
   add(kind,position,size,rank,shoal=-1) {
     const r=this.random;
@@ -387,36 +432,69 @@ export class ReefSimulation {
   // rocking the white first pair of legs fore and aft, which is the display Caves measured
   // in this species rather than the whole-body sway of the swimming cleaners — broken by
   // short walks to reposition and longer spells picking at the rock with the two chelate
-  // pairs. Fish only steer for a shrimp that is advertising (`chooseGoal`); one that arrives
-  // is turned to, stepped under and reached at. A tail flip is the only violent thing the
-  // animal does and only a body going past at speed sets it off.
+  // pairs. Now and then it leaves the shoulder altogether: down the flank onto the sand
+  // around the rock, or along the next rock where the sand is walled off, a spell picking
+  // there, and the walk home, as a tank cleaner does between clients. Fish only steer for a
+  // shrimp that is advertising (`chooseGoal`); one that arrives is turned to, stepped under
+  // and reached at. A tail flip is the only violent thing the animal does and only a body
+  // going past at speed sets it off.
   stepShrimp(dt,pointer) {
     const r=this.shrimpRandom;
-    // A foot only goes down where the rock is: refuse a foothold off the shoulder, one that
-    // drops away from it, or one on ground too steep to stand on.
-    const tread=(s,x,z)=>(x-s.home.x)**2+(z-s.home.z)**2<=SHRIMP.range**2
-      &&Math.abs(supportHeight(x,z)-supportHeight(s.home.x,s.home.z))<=SHRIMP.drop
-      &&Math.hypot(supportHeight(x+.12,z)-supportHeight(x-.12,z),supportHeight(x,z+.12)-supportHeight(x,z-.12))<=SHRIMP.grade*.24;
+    // A place is tested for the whole animal and not for one point. It fits where the body
+    // can be carried over the ground under its length without standing up higher than its
+    // legs allow, and where every walking foot, seated exactly as the model will be drawn
+    // (`seatShrimp`), can still fold down to its own ground — so a tail never runs into the
+    // rock behind, a head into the one ahead nor a foot into the one beside, turning or
+    // stepping.
+    const fits=(x,z,yaw)=>{const seat=seatShrimp(x,z,yaw);return seat.lift<=SHRIMP.lift&&seat.feet.every(([fx,fy,fz])=>supportHeight(fx,fz)-fy<=SHRIMP.stretch);};
+    // And a foot only goes down where the animal can stand. On the shoulder that is within
+    // its working range, never far below the station and never on ground too steep; on an
+    // excursion it is anywhere within roam, down a flank it can climb.
+    const tread=(s,x,z,yaw,out)=>{
+      if((x-s.home.x)**2+(z-s.home.z)**2>(out?SHRIMP.roam:SHRIMP.range)**2)return false;
+      const h=supportHeight(x,z);
+      if(!out&&Math.abs(h-supportHeight(s.home.x,s.home.z))>SHRIMP.drop)return false;
+      if(Math.hypot(supportHeight(x+.12,z)-supportHeight(x-.12,z),supportHeight(x,z+.12)-supportHeight(x,z-.12))>(out?SHRIMP.flank:SHRIMP.grade)*.24)return false;
+      return fits(x,z,yaw);
+    };
+    // A leg is walked at the animal's own pace with time to square up first. A route is a spot
+    // between rmin and rmax of a centre that a straight walk from here reaches with every
+    // finger's breadth of the way tested for the body as it will be carried, forward or astern;
+    // on the sand first when asked, then on any ground.
+    const leg=s=>Math.hypot(s.goal.x-s.position.x,s.goal.z-s.position.z)/SHRIMP.speed*1.4+2.5;
+    const route=(s,cx,cz,rmin,rmax,sand,astern)=>{
+      for(let pass=sand?0:1;pass<2;pass++)for(let k=0;k<10;k++){
+        const a=r()*6.2832,d=rmin+r()*(rmax-rmin),x=cx+Math.cos(a)*d,z=cz+Math.sin(a)*d;
+        if(pass===0&&supportHeight(x,z)-groundHeight(x,z)>.03)continue;
+        const dx=x-s.position.x,dz=z-s.position.z,n=Math.hypot(dx,dz),yaw=Math.atan2(-dz,dx)+(astern?Math.PI:0);let open=n>SHRIMP.hike;
+        for(let t=.03;t<=n&&open;t+=.03)open=tread(s,s.position.x+dx/n*t,s.position.z+dz/n*t,yaw,true);
+        if(open){s.goal.set(x,supportHeight(x,z),z);s.reverse=astern;return true;}
+      }
+      return false;
+    };
     // Square up onto the bearing first and only then walk it. Returns how far off the target
     // still was, so the caller can tell arrival from a step that is going nowhere.
     const toward=(s,tx,tz,astern,near)=>{
       const dx=tx-s.position.x,dz=tz-s.position.z,range=Math.hypot(dx,dz);
       const bearing=Math.atan2(-dz,dx)+(astern?Math.PI:0)-s.yaw;
       const off=Math.atan2(Math.sin(bearing),Math.cos(bearing));
-      const turn=clamp(off,-SHRIMP.turn*dt,SHRIMP.turn*dt);s.yaw+=turn;
+      // Turning sweeps the tail and the claws through a body's length of ground, so a turn
+      // is tested like a step, and one the rock refuses is not made.
+      let turn=clamp(off,-SHRIMP.turn*dt,SHRIMP.turn*dt);
+      if(fits(s.position.x,s.position.z,s.yaw+turn))s.yaw+=turn;else turn=0;
       let gone=0;
       if(Math.abs(off)<SHRIMP.square&&range>near){
         gone=Math.min(SHRIMP.speed*dt,range-near);
         const x=s.position.x+dx/range*gone,z=s.position.z+dz/range*gone;
-        if(tread(s,x,z)){s.position.x=x;s.position.z=z;}else{gone=0;s.timer=0;}
-      }
+        if(tread(s,x,z,s.yaw,s.out>0)){s.position.x=x;s.position.z=z;}else{gone=0;s.timer=0;}
+      }else if(!turn&&range>near)s.timer=0;
       // Ground covered drives the gait — by the feet as much as by the body, so a turn on
       // the spot steps too — and nothing else does, so the legs can never skate.
       s.step=(s.step+((astern?-gone:gone)+Math.abs(turn)*SHRIMP.pivot)/SHRIMP.stride+1)%1;
       return range;
     };
     for(const s of this.shrimp) {
-      s.rhythm=(s.rhythm+dt)%SHRIMP.wrap;s.timer-=dt;
+      s.rhythm=(s.rhythm+dt)%SHRIMP.wrap;s.timer-=dt;if(!s.out)s.away-=dt;
       s.position.y=supportHeight(s.position.x,s.position.z);
       let client=null,nearest=SHRIMP.reach**2;
       for(const f of this.fish)if(f.state==='clean'){const d=f.position.distanceToSquared(s.position);if(d<nearest){nearest=d;client=f;}}
@@ -432,7 +510,7 @@ export class ReefSimulation {
           // flips, which is why a bout reads as one movement and not as two twitches.
           const k=(age%SHRIMP.flip)/SHRIMP.flip;s.curl=k<.47?k/.47:1-(k-.47)/.53*.70;
           if(k<.47){const x=s.position.x-Math.cos(s.yaw)*SHRIMP.jet*dt,z=s.position.z+Math.sin(s.yaw)*SHRIMP.jet*dt;
-            if(tread(s,x,z)){s.position.x=x;s.position.z=z;}}
+            if(tread(s,x,z,s.yaw,s.out>0)){s.position.x=x;s.position.z=z;}}
         }else s.curl=Math.max(0,.30-(age-bout)*SHRIMP.unroll);
         // It goes over onto one side as it fires — within fifteen milliseconds of the first
         // flexion in Arnott's frames — and rights itself as the abdomen comes back down.
@@ -446,15 +524,26 @@ export class ReefSimulation {
         if(toward(s,s.goal.x,s.goal.z,s.reverse,SHRIMP.arrive)<=SHRIMP.arrive)s.timer=0;
       }
       if(s.timer<=0){
-        const roll=r();let footing=false;
-        if(roll<SHRIMP.bout)for(let k=0;k<8&&!footing;k++){
-          const a=r()*6.2832,d=SHRIMP.hike+r()*(SHRIMP.range-SHRIMP.hike),x=s.home.x+Math.cos(a)*d,z=s.home.z+Math.sin(a)*d;
-          if(tread(s,x,z)&&(x-s.position.x)**2+(z-s.position.z)**2>SHRIMP.hike**2){s.goal.set(x,supportHeight(x,z),z);footing=true;}
+        // An excursion is one leg out, a spell picking wherever it got to, and the leg home.
+        // A home leg the ground cuts short is walked again from where it stopped, forward and
+        // astern by turns, with a spell of picking between tries, until it is home.
+        const far=(s.position.x-s.home.x)**2+(s.position.z-s.home.z)**2>SHRIMP.hike**2;
+        if(s.out===1){s.state='pick';s.timer=SHRIMP.graze+r()*4;s.out=2;}
+        else if(s.out===3&&!far){s.out=0;s.away=SHRIMP.outing*(1+r());s.state='advertise';s.timer=SHRIMP.stand+r()*5;}
+        else if(s.out>=2){if(route(s,s.home.x,s.home.z,0,SHRIMP.hike,false,s.out===3&&!s.reverse)){s.state='walk';s.timer=leg(s);}else{s.state='pick';s.timer=2.5+r()*3.5;}s.out=3;}
+        else if(s.away<=0&&route(s,s.home.x,s.home.z,SHRIMP.range+.3,SHRIMP.roam,true,false)){s.state='walk';s.timer=leg(s);s.out=1;}
+        else{
+          if(s.away<=0)s.away=SHRIMP.outing*.3;
+          const roll=r();let footing=false;
+          if(roll<SHRIMP.bout)for(let k=0;k<8&&!footing;k++){
+            const a=r()*6.2832,d=SHRIMP.hike+r()*(SHRIMP.range-SHRIMP.hike),x=s.home.x+Math.cos(a)*d,z=s.home.z+Math.sin(a)*d;
+            if((x-s.position.x)**2+(z-s.position.z)**2>SHRIMP.hike**2&&tread(s,x,z,Math.atan2(s.position.z-z,x-s.position.x),false)){s.goal.set(x,supportHeight(x,z),z);footing=true;}
+          }
+          // Carideans back out of places as readily as they walk into them.
+          if(footing){s.state='walk';s.timer=1.2+r()*1.8;s.reverse=r()<.22;}
+          else if(roll<SHRIMP.bout+SHRIMP.forage){s.state='pick';s.timer=2.5+r()*3.5;}
+          else{s.state='advertise';s.timer=SHRIMP.stand+r()*5;}
         }
-        // Carideans back out of places as readily as they walk into them.
-        if(footing){s.state='walk';s.timer=1.2+r()*1.8;s.reverse=r()<.22;}
-        else if(roll<SHRIMP.bout+SHRIMP.forage){s.state='pick';s.timer=2.5+r()*3.5;}
-        else{s.state='advertise';s.timer=SHRIMP.stand+r()*5;}
       }
       // Rocking is elicited by a big dark shape overhead rather than by a fish as such, and
       // it runs four times as often at a predator-sized client as at a small one.

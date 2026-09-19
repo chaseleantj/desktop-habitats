@@ -139,6 +139,11 @@ const THREAT = {
   familiarity: 0.04,
   habituation: 25,
 };
+// A porcupinefish cannot outrun anything, so it answers a hand at the glass by gulping
+// water until it is a ball of spines. It fills in about a second, stays inflated for a
+// while after the threat has gone, and lets the water out slowly. `reach` is how near
+// the pointer's ray must pass, in body lengths.
+const PUFF = { reach: 0.9, fill: 1.1, empty: 0.28, linger: 2.5, drag: 5, weakness: 0.6 };
 // A startled neighbour startles the fish beside it a few hundredths of a second later, in
 // nearly the same direction, which is how alarm crosses a shoal faster than any fish could
 // see the threat itself.
@@ -286,12 +291,36 @@ const SWIM_GLSL = /* glsl */ `
   // Part ids come from fish-anatomy.js: 4 and 5 are the pectorals, 1-3 and 6 the other fins.
   attribute vec4 aSwim; // x: wave phase, y: wave angle, z: turning curvature, w: pectoral brake
   attribute float aFinPhase;
+  attribute float aPuff;
   attribute float aPart;
   attribute float aFinProgress;
   varying vec3 vSkinPoint;
   varying vec2 vFishUV;
   varying float vFishPart;
+  varying float vFishProgress;
   const float PIVOT = 0.12;
+  // Inflation: the trunk balloons about the spine, the belly most and the back least,
+  // leaving the snout and the caudal peduncle alone. Fins keep their size and ride
+  // outward on the skin; spines stand up from lying flat to pointing along the skin's
+  // normal.
+  vec3 inflate(vec3 p, inout vec3 n) {
+    #ifdef FISH_PUFFER
+      float trunk = smoothstep(-0.28, -0.12, p.x) * (1.0 - smoothstep(0.26, 0.35, p.x));
+      float amount = aPuff * trunk;
+      float fin = step(0.5, aPart) * (1.0 - step(6.5, aPart));
+      amount *= mix(1.0, 1.0 - 0.7 * aFinProgress, fin);
+      float sy = 1.0 + amount * (p.y < 0.0 ? PUFF_BELLY : PUFF_BACK);
+      float sz = 1.0 + amount * PUFF_FLANK;
+      if (aPart > 12.5) {
+        vec3 lying = normalize(vec3(-1.0, 0.0, 0.0) - n * dot(vec3(-1.0, 0.0, 0.0), n));
+        p += aFinProgress * aPuff * PUFF_SPINE * (n - lying);
+      }
+      p.y *= sy;
+      p.z *= sz;
+      n = normalize(vec3(n.x, n.y / sy, n.z / sz));
+    #endif
+    return p;
+  }
   vec3 gSwimPosition;
   float spineAngle(float s) {
     float along = clamp(s / 0.57, 0.0, 1.0);
@@ -337,7 +366,17 @@ const SWIM_GLSL = /* glsl */ `
   }
 `;
 
-function applySwimming(material, palette, plan, withColor = true) {
+export function applySwimming(material, palette, plan, withColor = true) {
+  if (plan?.puff) {
+    material.defines = {
+      ...material.defines,
+      FISH_PUFFER: "",
+      PUFF_FLANK: plan.puff.flank.toFixed(3),
+      PUFF_BELLY: plan.puff.belly.toFixed(3),
+      PUFF_BACK: plan.puff.back.toFixed(3),
+      PUFF_SPINE: (plan.spines?.length ?? 0).toFixed(4),
+    };
+  }
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       "#include <common>",
@@ -349,7 +388,7 @@ function applySwimming(material, palette, plan, withColor = true) {
           "#include <beginnormal_vertex>",
           /* glsl */ `
           vec3 objectNormal = vec3(normal);
-          gSwimPosition = bendSpine(finMotion(position), objectNormal);
+          gSwimPosition = bendSpine(finMotion(inflate(position, objectNormal)), objectNormal);
         `,
         )
         .replace(
@@ -359,6 +398,7 @@ function applySwimming(material, palette, plan, withColor = true) {
           vSkinPoint = position;
           vFishUV = uv;
           vFishPart = aPart;
+          vFishProgress = aFinProgress;
         `,
         );
       applySkin(shader, palette, plan);
@@ -366,14 +406,14 @@ function applySwimming(material, palette, plan, withColor = true) {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <begin_vertex>",
         /* glsl */ `
-        vec3 swimNormal = vec3(0.0, 1.0, 0.0);
-        vec3 transformed = bendSpine(finMotion(position), swimNormal);
+        vec3 swimNormal = vec3(normal);
+        vec3 transformed = bendSpine(finMotion(inflate(position, swimNormal)), swimNormal);
       `,
       );
     }
   };
   material.customProgramCacheKey = () =>
-    `fish-swim-${withColor ? "skin" : "depth"}-${palette ? palette.key : "none"}`;
+    `fish-swim-${withColor ? "skin" : "depth"}-${palette ? palette.key : "none"}-${plan?.puff ? "puffer" : "fixed"}`;
 }
 
 function clampToBox(position, box, margin = 0) {
@@ -426,19 +466,25 @@ export function createFishSchool(
     const finPhaseAttribute = new THREE.InstancedBufferAttribute(
       new Float32Array(species.count), 1,
     );
+    const puffAttribute = new THREE.InstancedBufferAttribute(
+      new Float32Array(species.count), 1,
+    );
     swimAttribute.setUsage(THREE.DynamicDrawUsage);
     finPhaseAttribute.setUsage(THREE.DynamicDrawUsage);
+    puffAttribute.setUsage(THREE.DynamicDrawUsage);
     geometry.body.setAttribute("aSwim", swimAttribute);
     geometry.fins.setAttribute("aSwim", swimAttribute);
     geometry.body.setAttribute("aFinPhase", finPhaseAttribute);
     geometry.fins.setAttribute("aFinPhase", finPhaseAttribute);
+    geometry.body.setAttribute("aPuff", puffAttribute);
+    geometry.fins.setAttribute("aPuff", puffAttribute);
     const { skin: skinMaterial, fins: finMaterial } = createFishMaterials(species.palette);
     const depthMaterial = new THREE.MeshDepthMaterial({
       depthPacking: THREE.RGBADepthPacking,
     });
     applySwimming(skinMaterial, species.palette, species.plan);
     applySwimming(finMaterial, species.palette, species.plan);
-    applySwimming(depthMaterial, null, null, false);
+    applySwimming(depthMaterial, null, species.plan, false);
     const bodies = new THREE.InstancedMesh(geometry.body, skinMaterial, species.count);
     const membranes = new THREE.InstancedMesh(geometry.fins, finMaterial, species.count);
     bodies.name = species.name;
@@ -452,8 +498,8 @@ export function createFishSchool(
     membranes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(bodies, membranes);
     return {
-      species, geometry, swimAttribute, finPhaseAttribute, skinMaterial, finMaterial,
-      depthMaterial, bodies, membranes,
+      species, geometry, swimAttribute, finPhaseAttribute, puffAttribute, skinMaterial,
+      finMaterial, depthMaterial, bodies, membranes,
     };
   });
   // Which group and which slot in it each fish id draws with.
@@ -530,6 +576,10 @@ export function createFishSchool(
       yawRate: 0,
       bend: 0,
       finBrake: 0.25,
+      // Inflation, for a fish that can: how full it is now, and until when it is holding.
+      puff: 0,
+      puffUntil: -Infinity,
+      puffable: Boolean(slots[id].group.species.plan.puff),
       urge: 0,
       // Curiosity builds while a fish holds station and is spent on a visit somewhere.
       curiosity: range(0, 0.7),
@@ -1058,9 +1108,13 @@ export function createFishSchool(
       elapsed >= f.refractoryUntil &&
       random() < 1 - Math.exp(-dt * THREAT.rate * (looming / threshold - 1))
     ) {
-      startEscape(f, escapeDirection(f, pointer.position, delta));
-      startled++;
-      return;
+      // A porcupinefish has no dart in it: it puffs up where it is instead.
+      if (f.puffable) f.puffUntil = Math.max(f.puffUntil, elapsed + PUFF.linger);
+      else {
+        startEscape(f, escapeDirection(f, pointer.position, delta));
+        startled++;
+        return;
+      }
     }
     // Something merely close is given room, less and less as it becomes familiar.
     const zone = THREAT.flightZone / (1 + f.alarm);
@@ -1232,6 +1286,19 @@ export function createFishSchool(
           );
       }
       if (pointer) threat(f, pointer, dt);
+      if (f.puffable) {
+        // The hand hovering over it: the pointer's ray passing within a body length.
+        if (pointer?.ray) {
+          target.subVectors(f.position, pointer.ray.origin);
+          const along = target.dot(pointer.ray.direction);
+          const miss = Math.sqrt(Math.max(0, target.lengthSq() - along * along));
+          if (along > 0 && miss < PUFF.reach * STANDARD_LENGTH * f.scale)
+            f.puffUntil = Math.max(f.puffUntil, elapsed + PUFF.linger);
+        }
+        const wanted = elapsed < f.puffUntil ? 1 : 0;
+        const rate = wanted > f.puff ? PUFF.fill : PUFF.empty;
+        f.puff = THREE.MathUtils.clamp(f.puff + Math.sign(wanted - f.puff) * rate * dt, 0, 1);
+      }
       // Food is sensed after the pointer, so a fish that has just been startled is
       // already out of feeding by the time it is asked whether it can see a pellet.
       let foodDistance = Infinity;
@@ -1599,12 +1666,13 @@ export function createFishSchool(
         }
         acceleration.copy(lateral).addScaledVector(heading, tail);
       }
-      swim.addScaledVector(acceleration, dt);
+      // A ball of water swims poorly: weaker strokes and far more drag.
+      swim.addScaledVector(acceleration, dt * (1 - PUFF.weakness * f.puff));
       lateral.copy(swim).addScaledVector(heading, -swim.dot(heading));
       swim.addScaledVector(lateral, -(1 - Math.exp(-dt * SWIM.lateralDrag)));
       const speed = swim.length();
       swim.multiplyScalar(
-        1 / (1 + dt * (SWIM.linearDrag + SWIM.quadraticDrag * speed)),
+        1 / (1 + dt * (SWIM.linearDrag + SWIM.quadraticDrag * speed + PUFF.drag * f.puff)),
       );
       f.velocity.copy(swim).add(water);
       position.addScaledVector(f.velocity, dt);
@@ -1655,6 +1723,7 @@ export function createFishSchool(
         f.finBrake,
       );
       f.group.finPhaseAttribute.setX(f.slot, f.finPhase);
+      f.group.puffAttribute.setX(f.slot, f.puff);
 
       axisZ.crossVectors(heading, UP).normalize();
       axisY.crossVectors(axisZ, heading).normalize();
@@ -1676,6 +1745,7 @@ export function createFishSchool(
       group.membranes.instanceMatrix.needsUpdate = true;
       group.swimAttribute.needsUpdate = true;
       group.finPhaseAttribute.needsUpdate = true;
+      group.puffAttribute.needsUpdate = true;
     }
   }
 

@@ -280,10 +280,14 @@ async function start() {
           .divideScalar(seconds);
         pointer.velocity.lerp(pointerSample, 0.5);
         pointer.position.copy(pointerPosition);
+        pointer.ray.copy(raycaster.ray);
       } else
         pointer = {
           position: pointerPosition.clone(),
           velocity: new THREE.Vector3(),
+          // The line of sight into the tank, for what the pointer is over rather than
+          // merely near: a fish deeper in the water can still be under the hand.
+          ray: raycaster.ray.clone(),
         };
       lastPointerTime = now;
     }

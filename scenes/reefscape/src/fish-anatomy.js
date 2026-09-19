@@ -18,8 +18,9 @@ import { waterLitShader } from "./water.js";
 // species differ in size by the `scale` of their entry in species.js. The spine runs
 // along y = 0, z = 0 and the geometry is symmetric in z. Part ids (attribute aPart):
 // 0 body, 1 caudal, 2 dorsal, 3 anal, 4 right pectoral, 5 left pectoral, 6 pelvic,
-// 7 iris, 8 pupil, 9 oral slit, 10 corneal rim, 11 upper lip. aFinProgress runs 0 at a
-// fin's hinge to 1 at its free edge. The swimming deformation in fish.js bends this
+// 7 iris, 8 pupil, 9 oral slit, 10 corneal rim, 11 upper lip, 13 spine. aFinProgress
+// runs 0 at a fin's hinge to 1 at its free edge, and 0 at a spine's base to 1 at its
+// point. The swimming deformation in fish.js bends this
 // geometry about the vertical axis and supplies vSkinPoint (rest position), vFishUV
 // and vFishPart to the skin shader.
 
@@ -247,6 +248,12 @@ const PORCUPINE_PUFFER_PLAN = {
   mouth: { cornerX: 0.335, cornerY: -0.01, tipX: 0.3495, tipY: -0.004 },
   scales: [200, 60],
   rays: { 1: 10, 2: 14, 3: 14, 4: 22, 5: 22 },
+  // The spines: modified scales that lie flat along the body and stand up when the
+  // fish inflates. `rows` along the body, `around` each section.
+  spines: { length: 0.05, width: 0.0045, rows: 19, around: 13 },
+  // How far the body balloons when it fills with water: the belly most, the back
+  // least, the flanks between. The snout and the caudal peduncle do not inflate.
+  puff: { flank: 0.85, belly: 0.75, back: 0.45 },
   fins: [
     { part: 1, base: { hypural: [0.026, -0.024] }, tip: [[-0.31, 0.05], [-0.37, 0.075], [-0.42, 0.06], [-0.445, 0.025], [-0.45, 0.0], [-0.445, -0.025], [-0.42, -0.06], [-0.37, -0.075], [-0.31, -0.05]], edge: 0.026, root: 0.012 },
     { part: 2, base: { median: [-0.11, -0.22], dorsal: true, sink: 0.005 }, tip: [[-0.12, 0.13], [-0.17, 0.15], [-0.22, 0.14], [-0.26, 0.1]], edge: 0.024 },
@@ -758,6 +765,63 @@ function insertionLine(body, base, side) {
   return base.skin.map(([x, y]) => body.surfaceAt(x, y, side).toArray());
 }
 
+// A porcupinefish's spines: each a slim three-sided pyramid rooted in the skin, lying
+// back along the body with its point a little clear of the surface. Every vertex
+// carries the skin's normal at the root, and the point carries aFinProgress = 1, which
+// is what the swimming shader uses to stand the spine up when the fish inflates: it
+// moves the point from its flat position to `length` along that normal.
+function spineGeometry(body, { length, width, rows, around }) {
+  const positions = [],
+    normals = [],
+    uvs = [],
+    indices = [];
+  const progress = [];
+  const point = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  const back = new THREE.Vector3();
+  const side = new THREE.Vector3();
+  const seed = (i, j) => {
+    const h = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < around; j++) {
+      // Rows offset by half a spine, as scales are, and jittered.
+      const x = THREE.MathUtils.lerp(-0.2, 0.31, (i + 0.5 + 0.3 * (seed(i, j) - 0.5)) / rows);
+      const u = ((j + 0.5 * (i % 2) + 0.3 * (seed(j, i) - 0.5)) / around) * 2;
+      const mirrored = u <= 1;
+      const t = mirrored ? u : 2 - u;
+      const v = Math.cos(t * Math.PI);
+      const s = mirrored ? 1 : -1;
+      body.surfacePoint(x, v, s, point);
+      // No spines in the orbit or on the snout, and none right on the belly midline
+      // where the skin is loose.
+      const eye = body.eye;
+      const orbit = Math.hypot((x - eye.x) / eye.radiusX, (point.y - eye.y) / eye.radiusY);
+      if (orbit < 1.5 || x > 0.3) continue;
+      body.surfaceNormal(x, point.y, s, normal);
+      back.set(-1, 0, 0).addScaledVector(normal, -normal.x).normalize();
+      side.crossVectors(normal, back).normalize();
+      const start = positions.length / 3;
+      const w = width * (0.8 + 0.4 * seed(i * 3, j * 7));
+      const base = [
+        point.clone().addScaledVector(side, w).addScaledVector(normal, -w * 0.5),
+        point.clone().addScaledVector(side, -w * 0.5).addScaledVector(back, w * 0.85).addScaledVector(normal, -w * 0.5),
+        point.clone().addScaledVector(side, -w * 0.5).addScaledVector(back, -w * 0.85).addScaledVector(normal, -w * 0.5),
+      ];
+      const apex = point.clone().addScaledVector(back, length).addScaledVector(normal, w * 0.6);
+      for (const b of [...base, apex]) {
+        positions.push(b.x, b.y, b.z);
+        normals.push(normal.x, normal.y, normal.z);
+        uvs.push(0, 0);
+      }
+      progress.push(0, 0, 0, 1);
+      indices.push(start, start + 1, start + 3, start + 1, start + 2, start + 3, start + 2, start, start + 3);
+    }
+  }
+  return { geometry: fromArrays(positions, normals, uvs, indices), progress };
+}
+
 export function makeAnatomy(plan) {
   const body = new Body(plan);
   const opaque = geometryBuilder();
@@ -770,6 +834,10 @@ export function makeAnatomy(plan) {
     opaque.add(eyeCap(body.eye, side, body.eye.iris, body.eye.rim, 2, 30, 0.0004, 0.0013), 10);
     opaque.add(cleftRibbon(body, side, -0.0016, 0.0016, -0.001, 7), 9);
     opaque.add(cleftRibbon(body, side, 0.0022, 0.005, 0.0005, 7), 11);
+  }
+  if (plan.spines) {
+    const { geometry, progress } = spineGeometry(body, plan.spines);
+    opaque.add(geometry, 13, progress);
   }
 
   for (const fin of plan.fins) {
@@ -875,6 +943,7 @@ export function applySkin(shader, palette = CHROMIS, plan = CHROMIS_PLAN) {
       varying vec3 vSkinPoint;
       varying vec2 vFishUV;
       varying float vFishPart;
+      varying float vFishProgress;
 
       // What the tissue under this fragment passes: set once the anatomy is known, read
       // back by every light below.
@@ -1117,8 +1186,11 @@ export function applySkin(shader, palette = CHROMIS, plan = CHROMIS_PLAN) {
         diffuseColor.rgb = vec3(0.036, 0.020, 0.018);
       } else if (vFishPart < 10.5) {
         diffuseColor.rgb = vec3(0.175, 0.168, 0.132);
-      } else {
+      } else if (vFishPart < 11.5) {
         diffuseColor.rgb = vec3(0.330, 0.310, 0.265);
+      } else {
+        // A spine: pale bone under a film of skin, darker toward the root.
+        diffuseColor.rgb = mix(vec3(0.42, 0.36, 0.22), vec3(0.78, 0.74, 0.58), vFishProgress);
       }
     `,
     )
@@ -1167,6 +1239,8 @@ export function applySkin(shader, palette = CHROMIS, plan = CHROMIS_PLAN) {
         roughnessFactor = 0.05;
       } else if (vFishPart > 9.5 && vFishPart < 10.5) {
         roughnessFactor = 0.09;
+      } else if (vFishPart > 12.5) {
+        roughnessFactor = 0.55;
       }
     `,
     )

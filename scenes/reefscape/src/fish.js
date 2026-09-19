@@ -283,7 +283,7 @@ const STRIKE = {
 // Integrate the spine's tangent, preserving body length. A travelling angular wave
 // builds along the trunk and peduncle; the head counter-moves only slightly.
 const SWIM_GLSL = /* glsl */ `
-  // Part ids come from fish-anatomy.js: 4 and 5 are the pectorals, 1-3, 6 and 12 the other fins.
+  // Part ids come from fish-anatomy.js: 4 and 5 are the pectorals, 1-3 and 6 the other fins.
   attribute vec4 aSwim; // x: wave phase, y: wave angle, z: turning curvature, w: pectoral brake
   attribute float aFinPhase;
   attribute float aPart;
@@ -310,7 +310,7 @@ const SWIM_GLSL = /* glsl */ `
       // The trailing membrane lags behind the peduncle instead of acting as a paddle.
       p.z += aSwim.y * 0.045 * aFinProgress * aFinProgress
         * sin(aSwim.x - (PIVOT - p.x) * 7.5 - 0.65);
-    } else if ((aPart > 1.5 && aPart < 6.5) || aPart > 11.5) {
+    } else if (aPart > 1.5 && aPart < 6.5) {
       p.z += sin(aFinPhase - p.x * 10.0) * aFinProgress * 0.004;
     }
     return p;
@@ -337,7 +337,7 @@ const SWIM_GLSL = /* glsl */ `
   }
 `;
 
-function applySwimming(material, palette, withColor = true) {
+function applySwimming(material, palette, plan, withColor = true) {
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       "#include <common>",
@@ -361,7 +361,7 @@ function applySwimming(material, palette, withColor = true) {
           vFishPart = aPart;
         `,
         );
-      applySkin(shader, palette);
+      applySkin(shader, palette, plan);
     } else {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <begin_vertex>",
@@ -418,7 +418,7 @@ export function createFishSchool(
   // skin and its own pair of instanced meshes, and each fish knows which group it
   // draws with. The behaviour below is shared; a fish is a fish.
   const groups = SPECIES.map((species) => {
-    const geometry = makeAnatomy(species);
+    const geometry = makeAnatomy(species.plan);
     const swimAttribute = new THREE.InstancedBufferAttribute(
       new Float32Array(species.count * 4),
       4,
@@ -436,9 +436,9 @@ export function createFishSchool(
     const depthMaterial = new THREE.MeshDepthMaterial({
       depthPacking: THREE.RGBADepthPacking,
     });
-    applySwimming(skinMaterial, species.palette);
-    applySwimming(finMaterial, species.palette);
-    applySwimming(depthMaterial, null, false);
+    applySwimming(skinMaterial, species.palette, species.plan);
+    applySwimming(finMaterial, species.palette, species.plan);
+    applySwimming(depthMaterial, null, null, false);
     const bodies = new THREE.InstancedMesh(geometry.body, skinMaterial, species.count);
     const membranes = new THREE.InstancedMesh(geometry.fins, finMaterial, species.count);
     bodies.name = species.name;

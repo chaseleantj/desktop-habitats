@@ -1,9 +1,9 @@
-import { CHROMIS } from "./fish-anatomy.js";
+import { CHROMIS, PLANS } from "./fish-anatomy.js";
 
-// The reef's stocking list. Each species is a body shape (`depth` and `width` reshape
-// the shared anatomy, `scale` is the size range in fish units) and a skin: a palette in
-// the shape of CHROMIS, with `pattern` GLSL for the markings the palette's gradients
-// cannot make. Colours are linear RGB, the way the shader wants them.
+// The reef's stocking list. Each species is a body plan from fish-anatomy.js (its own
+// outline, fins, eye and mouth; `scale` is the size range in fish units) and a skin: a
+// palette in the shape of CHROMIS, with `pattern` GLSL for the markings the palette's
+// gradients cannot make. Colours are linear RGB, the way the shader wants them.
 //
 // Markings are drawn in the fish's own coordinates: `fishX` runs from the caudal fork
 // near -0.44 to the snout at 0.35, and `fishBand` from 0 on the dorsal midline to 1 on
@@ -49,9 +49,9 @@ export const CLOWNFISH = {
   {
     float centre = -0.015 + 0.03 * (1.0 - smoothstep(0.1, 0.5, fishBand));
     float d = abs(fishX - centre);
-    float half = 0.038 + 0.014 * (1.0 - smoothstep(0.1, 0.6, fishBand));
-    float white = 1.0 - smoothstep(half - 0.006, half, d);
-    float seam = smoothstep(half - 0.006, half, d) * (1.0 - smoothstep(half, half + 0.009, d));
+    float halfWidth = 0.038 + 0.014 * (1.0 - smoothstep(0.1, 0.6, fishBand));
+    float white = 1.0 - smoothstep(halfWidth - 0.006, halfWidth, d);
+    float seam = smoothstep(halfWidth - 0.006, halfWidth, d) * (1.0 - smoothstep(halfWidth, halfWidth + 0.009, d));
     skin = mix(skin, vec3(0.86, 0.87, 0.85), white);
     skin = mix(skin, vec3(0.012, 0.010, 0.010), seam * 0.9);
   }` + bar(-0.245, 0.035),
@@ -166,26 +166,35 @@ export const MOORISH_IDOL = {
   skull: [0.86, 0.86, 0.82],
   snout: [0.5, 0.36, 0.06],
   orbit: [0.2, 0.18, 0.15],
-  // Two broad black bands, the yellow saddle between them, a yellow-orange snout, and
-  // a black tail with its white edge.
+  // Two broad black bands, both leaning back as they descend: the first from the
+  // dorsal origin down through the pectoral base to the pelvics, the second over the
+  // rear of the body to the anal fin. Between them the white carries a yellow wash
+  // over the upper flank; the peduncle is white and the tail black. The snout carries
+  // an orange saddle, and a short dark bar drops from the forehead to the eye.
   pattern: /* glsl */ `
   {
-    float front = smoothstep(-0.06, -0.02, fishX) * (1.0 - smoothstep(0.08, 0.12, fishX));
-    float back = smoothstep(-0.33, -0.29, fishX) * (1.0 - smoothstep(-0.2, -0.16, fishX));
-    float saddle = smoothstep(-0.17, -0.13, fishX) * (1.0 - smoothstep(-0.05, -0.02, fishX))
-      * (1.0 - smoothstep(0.35, 0.55, fishBand));
-    skin = mix(skin, vec3(0.94, 0.7, 0.06), saddle);
+    float lean = 0.05 * fishBand;
+    float front = smoothstep(-0.005, 0.03, fishX + lean) * (1.0 - smoothstep(0.12, 0.15, fishX + lean * 0.4));
+    float back = smoothstep(-0.29, -0.26, fishX - lean * 0.5) * (1.0 - smoothstep(-0.16, -0.125, fishX + lean));
+    float wash = smoothstep(-0.17, -0.09, fishX) * (1.0 - smoothstep(-0.03, 0.03, fishX))
+      * (1.0 - smoothstep(0.25, 0.6, fishBand));
+    skin = mix(skin, vec3(0.94, 0.72, 0.08), wash * 0.9);
     skin = mix(skin, vec3(0.012, 0.011, 0.012), max(front, back));
-    skin = mix(skin, vec3(0.012, 0.011, 0.012), 1.0 - smoothstep(-0.31, -0.28, fishX));
-    float snoutY = smoothstep(0.3, 0.45, fishBand) * (1.0 - smoothstep(0.55, 0.7, fishBand));
-    skin = mix(skin, vec3(0.94, 0.62, 0.05), smoothstep(0.24, 0.3, fishX) * snoutY);
+    float snoutY = smoothstep(0.1, 0.3, fishBand) * (1.0 - smoothstep(0.62, 0.8, fishBand));
+    skin = mix(skin, vec3(0.94, 0.55, 0.05), smoothstep(0.255, 0.29, fishX) * snoutY);
+    float brow = exp(-pow((fishX - 0.205) / 0.012, 2.0)) * (1.0 - smoothstep(0.2, 0.32, fishBand));
+    skin = mix(skin, vec3(0.05, 0.04, 0.04), brow * 0.8);
   }`,
   membrane: [0.012, 0.011, 0.012],
   finPigment: [0.012, 0.011, 0.012],
   finReach: 1.3,
   finPaleTip: [0.012, 0.011, 0.012],
+  // The dorsal sail and its filament are white with a yellow wash at the base; the
+  // other fins are black with a fine white margin.
   finPattern: /* glsl */ `
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.87, 0.85), smoothstep(0.86, 0.94, span));
+    float sail = step(1.5, vFishPart) * (1.0 - step(2.5, vFishPart));
+    diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.9, 0.7, 0.1), vec3(0.88, 0.88, 0.84), smoothstep(0.05, 0.4, span)), sail);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.87, 0.85), (1.0 - sail) * smoothstep(0.86, 0.94, span));
   `,
   finAbsorption: [5, 5, 5],
   iris: [0.3, 0.25, 0.15],
@@ -280,16 +289,16 @@ export const ROYAL_GRAMMA = {
   irisDark: [0.15, 0.1, 0.03],
 };
 
-// The roster, in the order the shoal is numbered. `count` is how many, `depth` and
-// `width` the body reshaping, `scale` the size range as a multiple of the tetra's 40 mm.
+// The roster, in the order the shoal is numbered. `count` is how many, `plan` the
+// anatomy, `scale` the size range as a multiple of a 40 mm fish.
 export const SPECIES = [
-  { key: "chromis", name: "Blue-green chromis", count: 8, depth: 1.15, width: 1, scale: [0.78, 0.98], palette: CHROMIS },
-  { key: "ocellaris", name: "Ocellaris clownfish", count: 3, depth: 1.45, width: 1.15, scale: [0.95, 1.15], palette: CLOWNFISH },
-  { key: "moorish-idol", name: "Moorish idol", count: 1, depth: 2.1, width: 0.7, scale: [1.6, 1.6], palette: MOORISH_IDOL },
-  { key: "regal-tang", name: "Regal blue tang", count: 1, depth: 1.85, width: 0.8, scale: [1.55, 1.55], palette: REGAL_TANG },
-  { key: "porcupine-puffer", name: "Porcupine pufferfish", count: 1, depth: 1.7, width: 1.9, scale: [1.5, 1.5], palette: PORCUPINE_PUFFER },
-  { key: "royal-gramma", name: "Royal gramma", count: 1, depth: 1.2, width: 1, scale: [0.85, 0.85], palette: ROYAL_GRAMMA },
-  { key: "yellow-tang", name: "Yellow tang", count: 1, depth: 1.95, width: 0.8, scale: [1.45, 1.45], palette: YELLOW_TANG },
-];
+  { key: "chromis", name: "Blue-green chromis", count: 8, scale: [0.85, 1.05], palette: CHROMIS },
+  { key: "ocellaris", name: "Ocellaris clownfish", count: 3, scale: [1.0, 1.2], palette: CLOWNFISH },
+  { key: "moorish-idol", name: "Moorish idol", count: 1, scale: [1.7, 1.7], palette: MOORISH_IDOL },
+  { key: "regal-tang", name: "Regal blue tang", count: 1, scale: [1.65, 1.65], palette: REGAL_TANG },
+  { key: "porcupine-puffer", name: "Porcupine pufferfish", count: 1, scale: [1.6, 1.6], palette: PORCUPINE_PUFFER },
+  { key: "royal-gramma", name: "Royal gramma", count: 1, scale: [0.9, 0.9], palette: ROYAL_GRAMMA },
+  { key: "yellow-tang", name: "Yellow tang", count: 1, scale: [1.55, 1.55], palette: YELLOW_TANG },
+].map((species) => ({ ...species, plan: PLANS[species.key] }));
 
 export const COUNT = SPECIES.reduce((total, species) => total + species.count, 0);

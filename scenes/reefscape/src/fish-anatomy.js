@@ -1,28 +1,27 @@
 import * as THREE from "three";
 import { waterLitShader } from "./water.js";
 
-// Blue-green chromis, Chromis viridis, the schooling damselfish of every reef tank: a
-// small fish the colour of shallow water, an apple green over the back that runs to a
-// pale blue-green on the flank, every scale a mirror, with fins as clear as the water
-// they move. The skin below is the chromis; the geometry it is drawn over is still
-// the bloodfin tetra of the freshwater scene, a stand-in until the reef has anatomy of
-// its own -- a chromis is deeper in the body and blunter in the snout, but the same
-// forked-tailed, mid-water schooling shape. The tetra's dimensions, derived from the
-// published morphometrics as a fraction of standard length:
+// The reef's fish, each with anatomy of its own. Every species is a body plan: the
+// outline of the fish in side view (top and bottom of the profile along its length),
+// the half width and the fullness of the cross-section, the eye, the mouth cleft, the
+// gill cover, and the fins, each an insertion line in the skin and the outline of its
+// free margin. The plans are written from the shapes of the animals rather than from
+// one another: a chromis is a small oval with a forked tail, a clownfish a rounded
+// disc with rounded fins, a tang a compressed oval with a pointed snout and a fin
+// running the length of its back, a Moorish idol a disc taller than it is long with a
+// tubular snout and a sail, a porcupinefish a broad rounded barrel with fans for
+// pectorals and no pelvics at all, a gramma a small elongate basslet.
 //
-//   standard length 0.645 (a 40 mm adult)   greatest depth 29% SL, at the dorsal origin
-//   head 27% SL, eye 39% of head length     greatest width 12.6% SL (width/depth 0.43)
-//   dorsal origin 52% SL, base 11% SL       anal origin 60% SL, base 26% SL
-//   pelvic origin 46% SL                    adipose fin 84% SL
-//   caudal peduncle depth 11% SL            caudal lobes 27% SL, deeply forked
-//
-// Forward axis is +X: the snout is at x = 0.35, the caudal lobes end near x = -0.44,
-// the spine runs along y = 0, z = 0 and the geometry is symmetric in z. Part ids
-// (attribute aPart): 0 body, 1 caudal, 2 dorsal, 3 anal, 4 right pectoral, 5 left
-// pectoral, 6 pelvic, 7 iris, 8 pupil, 9 oral slit, 10 corneal rim, 11 upper lip,
-// 12 adipose. aFinProgress runs 0 at a fin's hinge to 1 at its free edge. The
-// swimming deformation in fish.js bends this geometry about the vertical axis and
-// supplies vSkinPoint (rest position), vFishUV and vFishPart to the skin shader.
+// Every plan shares one frame so the skins can be written once. Forward is +X: the
+// snout is at x = 0.35 and the caudal fin's base, the hypural plate, at x = -0.295 for
+// every species, so a fish's standard length is 0.645 model units whatever its shape;
+// species differ in size by the `scale` of their entry in species.js. The spine runs
+// along y = 0, z = 0 and the geometry is symmetric in z. Part ids (attribute aPart):
+// 0 body, 1 caudal, 2 dorsal, 3 anal, 4 right pectoral, 5 left pectoral, 6 pelvic,
+// 7 iris, 8 pupil, 9 oral slit, 10 corneal rim, 11 upper lip. aFinProgress runs 0 at a
+// fin's hinge to 1 at its free edge. The swimming deformation in fish.js bends this
+// geometry about the vertical axis and supplies vSkinPoint (rest position), vFishUV
+// and vFishPart to the skin shader.
 
 const TAU = Math.PI * 2;
 // Exported because behaviour needs them: a fish eats with its snout, not its centre, and
@@ -31,86 +30,11 @@ export const SNOUT_X = 0.35;
 export const STANDARD_LENGTH = 0.645;
 const HYPURAL_X = SNOUT_X - STANDARD_LENGTH;
 
-// Cross-sections: x, dorsal y, ventral y, half width, then the fullness exponents of
-// the upper and lower half. Fullness 2 is an ellipse; below 2 the section comes to a
-// ridge, which is how the dorsum and the caudal peduncle are actually shaped, and
-// above 2 it rounds out, as the skull and the belly do.
-const STATIONS = [
-  [0.35, -0.002, -0.009, 0.003, 2.4, 2.5],
-  [0.3425, 0.0085, -0.0205, 0.009, 2.4, 2.5],
-  [0.332, 0.0225, -0.03, 0.0165, 2.4, 2.5],
-  [0.315, 0.0375, -0.042, 0.0255, 2.35, 2.5],
-  [0.295, 0.05, -0.0525, 0.032, 2.3, 2.5],
-  [0.272, 0.06, -0.061, 0.0358, 2.3, 2.45],
-  [0.248, 0.0672, -0.069, 0.0385, 2.25, 2.4],
-  [0.22, 0.0722, -0.077, 0.0405, 2.15, 2.4],
-  [0.19, 0.0762, -0.085, 0.0408, 2.05, 2.35],
-  [0.166, 0.0782, -0.0908, 0.04, 2.0, 2.3],
-  [0.13, 0.0808, -0.0958, 0.0382, 2.1, 2.25],
-  [0.09, 0.0832, -0.1, 0.036, 2.05, 2.2],
-  [0.045, 0.0848, -0.1022, 0.0342, 2.0, 2.15],
-  [0.01, 0.0852, -0.1028, 0.0324, 1.95, 2.1],
-  [-0.04, 0.0812, -0.0998, 0.0292, 1.88, 1.9],
-  [-0.09, 0.073, -0.09, 0.0252, 1.78, 1.78],
-  [-0.14, 0.062, -0.0748, 0.0208, 1.66, 1.66],
-  [-0.19, 0.049, -0.057, 0.016, 1.52, 1.54],
-  [-0.235, 0.04, -0.043, 0.0118, 1.46, 1.48],
-  [-0.27, 0.0358, -0.0358, 0.0088, 1.42, 1.42],
-  [HYPURAL_X, 0.0336, -0.033, 0.005, 1.4, 1.4],
-];
 const SECTION_WAIST = 2.15;
-
-// Rows are spaced by the integral of this density, so the snout, the orbit, the
-// opercular margin and the peduncle — where the profile turns hardest — get the mesh.
-const ROW_DENSITY = [
-  [0.35, 2.4],
-  [0.315, 2.1],
-  [0.288, 3.0],
-  [0.256, 3.0],
-  [0.228, 2.1],
-  [0.19, 1.7],
-  [0.16, 1.5],
-  [0.06, 1.0],
-  [-0.12, 1.0],
-  [-0.21, 1.4],
-  [-0.265, 2.0],
-  [HYPURAL_X, 2.4],
-];
 const BODY_ROWS = 84;
 const BODY_COLUMNS = 62;
-
-// The eyeball is a flattened lens seated in the orbit: 39% of head length across but
-// only a fifth of that thick, as a small characin's eye is. The body surface takes on
-// the eyeball's shape inside the orbit, so the eye can never part from the head.
-const EYE = {
-  x: 0.272,
-  y: 0.012,
-  radiusX: 0.0335,
-  radiusY: 0.0325,
-  bulge: 0.0126,
-  inset: 0.0228,
-  pupil: 0.60,
-  iris: 0.93,
-  rim: 0.985,
-};
-
-// Posterior margin of the gill cover: bowed back at mid-height, sloping forward at the
-// nape and the isthmus. The opercle's free edge overlaps the shoulder, so the surface
-// carries a raised bony edge and then a groove.
-const OPERCLE = { x: 0.196, bow: 0.03, y: -0.004, span: 0.078 };
-
-// Terminal, slightly upturned mouth: the cleft rises from the corner to the snout tip.
-const MOUTH = { cornerX: 0.322, cornerY: -0.0175, tipX: 0.3495, tipY: -0.0035 };
-
-// Fin ray counts from the species' fin formulae: dorsal ii,9; anal iii,20;
-// pectoral i,11; pelvic i,7; caudal 19 principal rays. The adipose fin has none.
-const FIN_RAYS = { 1: 19, 2: 11, 3: 23, 4: 12, 5: 12, 6: 8, 12: 0 };
 const MEMBRANE_STEPS = 8;
 const RAY_SUBDIVISIONS = 4;
-
-// Scale rows for a 40 mm fish: 34 in the lateral series, 11 from the dorsal midline to
-// the ventral. Visible only when a scale covers more than a pixel.
-const SCALE_ROWS = [34, 11];
 
 // Light transport through the body wall. The path is the width of the section at the
 // fragment, which the rest position already carries in z. One model unit is 62 mm, so
@@ -125,12 +49,10 @@ const TISSUE_SCATTER = 160;
 // Skin, scales and the muscle immediately under them: the shortest path anywhere on the
 // body, and what keeps the ridges from reading as a white rim rather than warm tissue.
 const MUSCLE_FLOOR = 0.012;
-// A fin membrane is a fraction of a millimetre of collagen. Its red is carotenoid in the
-// rays' sheath, which absorbs green and blue almost completely at full strength; the rays
-// themselves are bone splints, so they stand in a backlit fin as dark striations however
-// bright they look by reflection.
+// A fin membrane is a fraction of a millimetre of collagen. The rays themselves are bone
+// splints, so they stand in a backlit fin as dark striations however bright they look
+// by reflection.
 const MEMBRANE_THICKNESS = 0.004;
-const FIN_PIGMENT = [1.6, 0.6, 1.4];
 const FIN_RAY_DENSITY = 0.5;
 // Myomeres, roughly one per vertebra, their septa swept forward at mid-depth into the
 // chevron that shows when the caudal muscle is lit through. Cycles per model unit.
@@ -149,12 +71,13 @@ const THROUGH = {
 
 const glsl = (value) => value.toFixed(5);
 
-// Smooth interpolation through the station knots. Slopes are the neighbours' secant,
-// which keeps the profile C1 without the overshoot a uniform parameterisation adds
-// where the knots crowd together at the snout.
+// Smooth interpolation through knots. Slopes are the neighbours' secant, which keeps
+// the profile C1 without the overshoot a uniform parameterisation adds where the knots
+// crowd together at the snout.
 function splineThrough(knots) {
-  const xs = knots.map((knot) => knot[0]);
-  const ys = knots.map((knot) => knot[1]);
+  const sorted = [...knots].sort((a, b) => a[0] - b[0]);
+  const xs = sorted.map((knot) => knot[0]);
+  const ys = sorted.map((knot) => knot[1]);
   const last = xs.length - 1;
   const slopes = ys.map((_, i) => {
     if (i === 0) return (ys[1] - ys[0]) / (xs[1] - xs[0]);
@@ -184,232 +107,427 @@ function splineThrough(knots) {
   };
 }
 
-const CHANNELS = ["top", "bottom", "width", "fullUp", "fullDown"];
-const PROFILE = CHANNELS.map((_, channel) =>
-  splineThrough(
-    STATIONS.map((station) => [station[0], station[channel + 1]]).reverse(),
-  ),
-);
+// ---------------------------------------------------------------------------------
+// The body plans.
+//
+// `top` and `bottom` are the dorsal and ventral profile, [x, y] from snout to hypural;
+// `width` the half width of the section, [x, w]; `fullness` [x, upper, lower] the
+// exponents of the section's two halves: 2 is an ellipse, below 2 the section comes to
+// a ridge, as the dorsum and the caudal peduncle do, above 2 it rounds out, as the
+// skull and the belly do. `eye` is centre, radii and how far the cornea stands proud of
+// the orbit; `opercle` the posterior margin of the gill cover, bowed back at mid-height;
+// `mouth` the cleft from its corner to the snout tip. `scales` are the lateral and
+// transverse scale counts; a tang's scales are too fine to show and a porcupinefish has
+// none. `rays` are the ray counts by fin part, and `fins` the fins themselves: `base`
+// is the insertion line, either along a median line of the profile or in the skin of
+// the flank for a paired fin, `tip` the free margin, `edge` how deeply the membrane
+// scallops between rays, `root` how far the insertion sinks into the skin.
 
-function profile(x) {
-  const clamped = THREE.MathUtils.clamp(x, HYPURAL_X, SNOUT_X);
-  return {
-    top: PROFILE[0](clamped),
-    bottom: PROFILE[1](clamped),
-    width: PROFILE[2](clamped),
-    fullUp: PROFILE[3](clamped),
-    fullDown: PROFILE[4](clamped),
-  };
-}
+const CHROMIS_PLAN = {
+  key: "chromis",
+  top: [[0.35, -0.002], [0.34, 0.018], [0.325, 0.042], [0.30, 0.072], [0.265, 0.1], [0.22, 0.124], [0.16, 0.142], [0.09, 0.152], [0.02, 0.152], [-0.05, 0.14], [-0.12, 0.112], [-0.18, 0.078], [-0.23, 0.052], [-0.27, 0.04], [HYPURAL_X, 0.036]],
+  bottom: [[0.35, -0.01], [0.34, -0.03], [0.325, -0.052], [0.30, -0.076], [0.265, -0.098], [0.22, -0.116], [0.16, -0.13], [0.09, -0.137], [0.02, -0.136], [-0.05, -0.126], [-0.12, -0.102], [-0.18, -0.072], [-0.23, -0.05], [-0.27, -0.038], [HYPURAL_X, -0.034]],
+  width: [[0.35, 0.004], [0.335, 0.014], [0.31, 0.026], [0.28, 0.036], [0.24, 0.044], [0.18, 0.049], [0.1, 0.05], [0.0, 0.046], [-0.1, 0.036], [-0.18, 0.024], [-0.24, 0.013], [HYPURAL_X, 0.006]],
+  fullness: [[0.35, 2.4, 2.5], [0.25, 2.3, 2.4], [0.1, 2.0, 2.2], [-0.1, 1.85, 1.9], [-0.2, 1.55, 1.55], [HYPURAL_X, 1.4, 1.4]],
+  eye: { x: 0.268, y: 0.03, radiusX: 0.03, radiusY: 0.029, bulge: 0.011 },
+  opercle: { x: 0.185, bow: 0.03, y: 0.0, span: 0.1 },
+  mouth: { cornerX: 0.325, cornerY: -0.018, tipX: 0.3495, tipY: -0.004 },
+  scales: [30, 12],
+  rays: { 1: 17, 2: 24, 3: 16, 4: 17, 5: 17, 6: 6 },
+  fins: [
+    // A deeply forked tail with rounded lobes.
+    { part: 1, base: { hypural: [0.033, -0.031] }, tip: [[-0.30, 0.048], [-0.37, 0.09], [-0.43, 0.115], [-0.445, 0.105], [-0.40, 0.06], [-0.355, 0.012], [-0.345, -0.008], [-0.39, -0.05], [-0.43, -0.095], [-0.445, -0.108], [-0.415, -0.1], [-0.36, -0.085], [-0.30, -0.045]], edge: 0.022, root: 0.015 },
+    // One dorsal, the spines in front lower than the soft rays behind, whose lobe is
+    // drawn out over the peduncle.
+    { part: 2, base: { median: [0.165, -0.195], dorsal: true }, tip: [[0.165, 0.175], [0.11, 0.198], [0.05, 0.207], [-0.02, 0.205], [-0.09, 0.2], [-0.15, 0.205], [-0.2, 0.195], [-0.24, 0.14]], edge: 0.03 },
+    { part: 3, base: { median: [-0.045, -0.195], dorsal: false }, tip: [[-0.05, -0.168], [-0.1, -0.185], [-0.15, -0.19], [-0.2, -0.178], [-0.24, -0.13]], edge: 0.022 },
+    { part: 4, paired: true, base: { skin: [[0.178, -0.012], [0.172, -0.03], [0.163, -0.05]] }, tip: [[0.13, -0.015, 0.06], [0.10, -0.03, 0.08], [0.07, -0.05, 0.09], [0.055, -0.075, 0.08], [0.07, -0.095, 0.065], [0.11, -0.09, 0.05]], sway: 0.002, roll: 0.004, edge: 0.024, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.155, -0.118], [0.143, -0.125], [0.13, -0.128]] }, tip: [[0.135, -0.165, 0.025], [0.1, -0.2, 0.03], [0.06, -0.19, 0.022], [0.07, -0.15, 0.014]], sway: 0.0012, roll: 0.002, edge: 0.024, root: 0.005 },
+  ],
+};
 
-function opercleX(y) {
-  const t = THREE.MathUtils.clamp((y - OPERCLE.y) / OPERCLE.span, -1, 1);
-  return OPERCLE.x - OPERCLE.bow * (1 - t * t);
-}
+const CLOWNFISH_PLAN = {
+  key: "ocellaris",
+  top: [[0.35, 0.0], [0.34, 0.025], [0.325, 0.052], [0.30, 0.085], [0.265, 0.115], [0.22, 0.14], [0.16, 0.158], [0.09, 0.166], [0.02, 0.165], [-0.05, 0.152], [-0.12, 0.122], [-0.18, 0.088], [-0.23, 0.06], [-0.27, 0.048], [HYPURAL_X, 0.044]],
+  bottom: [[0.35, -0.008], [0.34, -0.03], [0.325, -0.056], [0.30, -0.085], [0.265, -0.11], [0.22, -0.13], [0.16, -0.145], [0.09, -0.152], [0.02, -0.15], [-0.05, -0.14], [-0.12, -0.115], [-0.18, -0.084], [-0.23, -0.058], [-0.27, -0.046], [HYPURAL_X, -0.042]],
+  width: [[0.35, 0.005], [0.335, 0.016], [0.31, 0.03], [0.28, 0.042], [0.24, 0.052], [0.18, 0.058], [0.1, 0.06], [0.0, 0.055], [-0.1, 0.043], [-0.18, 0.03], [-0.24, 0.018], [HYPURAL_X, 0.009]],
+  fullness: [[0.35, 2.5, 2.6], [0.25, 2.5, 2.6], [0.1, 2.3, 2.4], [-0.1, 2.0, 2.1], [-0.2, 1.7, 1.7], [HYPURAL_X, 1.6, 1.6]],
+  eye: { x: 0.262, y: 0.035, radiusX: 0.029, radiusY: 0.028, bulge: 0.011 },
+  opercle: { x: 0.18, bow: 0.028, y: 0.0, span: 0.11 },
+  mouth: { cornerX: 0.325, cornerY: -0.014, tipX: 0.3495, tipY: -0.002 },
+  scales: [28, 12],
+  rays: { 1: 15, 2: 26, 3: 14, 4: 16, 5: 16, 6: 6 },
+  fins: [
+    // Every fin rounded: the tail a fan, the dorsal dipping between spines and soft rays.
+    { part: 1, base: { hypural: [0.04, -0.04] }, tip: [[-0.31, 0.07], [-0.37, 0.1], [-0.42, 0.09], [-0.445, 0.05], [-0.45, 0.0], [-0.445, -0.05], [-0.42, -0.09], [-0.37, -0.1], [-0.31, -0.07]], edge: 0.03, root: 0.015 },
+    { part: 2, base: { median: [0.15, -0.2], dorsal: true }, tip: [[0.15, 0.2], [0.1, 0.228], [0.05, 0.232], [0.0, 0.225], [-0.04, 0.21], [-0.07, 0.215], [-0.11, 0.235], [-0.16, 0.235], [-0.2, 0.215], [-0.23, 0.16]], edge: 0.028 },
+    { part: 3, base: { median: [-0.06, -0.2], dorsal: false }, tip: [[-0.06, -0.19], [-0.1, -0.215], [-0.15, -0.225], [-0.2, -0.21], [-0.23, -0.16]], edge: 0.024 },
+    { part: 4, paired: true, base: { skin: [[0.175, -0.005], [0.168, -0.03], [0.158, -0.055]] }, tip: [[0.13, 0.0, 0.065], [0.09, -0.015, 0.085], [0.05, -0.04, 0.095], [0.03, -0.07, 0.09], [0.045, -0.1, 0.075], [0.09, -0.105, 0.06]], sway: 0.002, roll: 0.004, edge: 0.026, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.15, -0.13], [0.138, -0.14], [0.125, -0.143]] }, tip: [[0.13, -0.18, 0.03], [0.09, -0.215, 0.035], [0.045, -0.2, 0.028], [0.06, -0.16, 0.016]], sway: 0.0012, roll: 0.002, edge: 0.026, root: 0.005 },
+  ],
+};
 
-function mouthCleftY(x) {
-  const k = THREE.MathUtils.clamp(
-    (x - MOUTH.cornerX) / (MOUTH.tipX - MOUTH.cornerX),
-    0,
-    1,
-  );
-  return THREE.MathUtils.lerp(
-    MOUTH.cornerY,
-    MOUTH.tipY,
-    k * k * (3 - 2 * k),
-  );
-}
+const REGAL_TANG_PLAN = {
+  key: "regal-tang",
+  top: [[0.35, 0.0], [0.34, 0.02], [0.32, 0.05], [0.29, 0.088], [0.25, 0.125], [0.2, 0.155], [0.14, 0.175], [0.07, 0.185], [0.0, 0.182], [-0.07, 0.168], [-0.14, 0.138], [-0.2, 0.098], [-0.245, 0.062], [-0.275, 0.044], [HYPURAL_X, 0.038]],
+  bottom: [[0.35, -0.008], [0.34, -0.026], [0.32, -0.05], [0.29, -0.08], [0.25, -0.11], [0.2, -0.135], [0.14, -0.152], [0.07, -0.162], [0.0, -0.16], [-0.07, -0.148], [-0.14, -0.122], [-0.2, -0.086], [-0.245, -0.056], [-0.275, -0.04], [HYPURAL_X, -0.036]],
+  width: [[0.35, 0.004], [0.335, 0.012], [0.31, 0.022], [0.28, 0.03], [0.24, 0.036], [0.18, 0.04], [0.1, 0.041], [0.0, 0.038], [-0.1, 0.03], [-0.18, 0.02], [-0.24, 0.012], [HYPURAL_X, 0.006]],
+  fullness: [[0.35, 2.3, 2.4], [0.25, 2.2, 2.3], [0.1, 1.9, 2.0], [-0.1, 1.8, 1.85], [-0.2, 1.6, 1.6], [HYPURAL_X, 1.5, 1.5]],
+  eye: { x: 0.245, y: 0.065, radiusX: 0.026, radiusY: 0.025, bulge: 0.009 },
+  opercle: { x: 0.17, bow: 0.03, y: 0.01, span: 0.12 },
+  mouth: { cornerX: 0.33, cornerY: -0.012, tipX: 0.3495, tipY: -0.003 },
+  scales: [70, 26],
+  rays: { 1: 16, 2: 30, 3: 26, 4: 16, 5: 16, 6: 5 },
+  fins: [
+    // A lunate tail, and a dorsal and anal that run most of the body's length.
+    { part: 1, base: { hypural: [0.036, -0.034] }, tip: [[-0.30, 0.06], [-0.36, 0.095], [-0.42, 0.12], [-0.445, 0.128], [-0.42, 0.08], [-0.395, 0.03], [-0.385, 0.0], [-0.395, -0.03], [-0.42, -0.08], [-0.445, -0.126], [-0.42, -0.118], [-0.36, -0.093], [-0.30, -0.058]], edge: 0.015, root: 0.015 },
+    { part: 2, base: { median: [0.175, -0.24], dorsal: true }, tip: [[0.175, 0.2], [0.12, 0.235], [0.06, 0.25], [0.0, 0.25], [-0.07, 0.24], [-0.14, 0.215], [-0.2, 0.175], [-0.24, 0.13], [-0.265, 0.085]], edge: 0.012 },
+    { part: 3, base: { median: [-0.01, -0.24], dorsal: false }, tip: [[-0.01, -0.2], [-0.07, -0.215], [-0.14, -0.2], [-0.2, -0.165], [-0.24, -0.125], [-0.265, -0.08]], edge: 0.012 },
+    { part: 4, paired: true, base: { skin: [[0.165, 0.0], [0.16, -0.022], [0.152, -0.045]] }, tip: [[0.12, 0.01, 0.05], [0.08, -0.005, 0.065], [0.03, -0.03, 0.075], [0.025, -0.06, 0.068], [0.06, -0.085, 0.055], [0.11, -0.08, 0.042]], sway: 0.002, roll: 0.004, edge: 0.02, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.14, -0.14], [0.13, -0.148], [0.118, -0.15]] }, tip: [[0.12, -0.185, 0.02], [0.08, -0.215, 0.024], [0.045, -0.2, 0.018], [0.06, -0.165, 0.012]], sway: 0.0012, roll: 0.002, edge: 0.02, root: 0.005 },
+  ],
+};
 
-// Depth coordinate v runs -1 at the ventral midline to +1 at the dorsal. Returns the
-// height of the surface there; the sections are taller above the spine than below it
-// by the same ratio a characin's vertebral column sits at.
-function sectionY(section, v) {
-  const centre = (section.top + section.bottom) * 0.5;
-  return v >= 0
-    ? centre + v * (section.top - centre)
-    : centre + v * (centre - section.bottom);
-}
+const YELLOW_TANG_PLAN = {
+  key: "yellow-tang",
+  // Deeper than the regal tang, the forehead concave over a produced snout, and the
+  // dorsal and anal spread into sails.
+  top: [[0.35, -0.005], [0.34, 0.012], [0.32, 0.035], [0.29, 0.065], [0.25, 0.105], [0.2, 0.15], [0.14, 0.185], [0.07, 0.2], [0.0, 0.2], [-0.07, 0.185], [-0.14, 0.15], [-0.2, 0.105], [-0.245, 0.066], [-0.275, 0.046], [HYPURAL_X, 0.04]],
+  bottom: [[0.35, -0.014], [0.34, -0.032], [0.32, -0.056], [0.29, -0.085], [0.25, -0.118], [0.2, -0.148], [0.14, -0.172], [0.07, -0.185], [0.0, -0.185], [-0.07, -0.17], [-0.14, -0.14], [-0.2, -0.098], [-0.245, -0.062], [-0.275, -0.044], [HYPURAL_X, -0.038]],
+  width: [[0.35, 0.004], [0.335, 0.011], [0.31, 0.02], [0.28, 0.028], [0.24, 0.034], [0.18, 0.038], [0.1, 0.04], [0.0, 0.037], [-0.1, 0.03], [-0.18, 0.02], [-0.24, 0.012], [HYPURAL_X, 0.006]],
+  fullness: [[0.35, 2.3, 2.4], [0.25, 2.2, 2.3], [0.1, 1.9, 2.0], [-0.1, 1.8, 1.85], [-0.2, 1.6, 1.6], [HYPURAL_X, 1.5, 1.5]],
+  eye: { x: 0.235, y: 0.075, radiusX: 0.025, radiusY: 0.024, bulge: 0.009 },
+  opercle: { x: 0.165, bow: 0.03, y: 0.01, span: 0.13 },
+  mouth: { cornerX: 0.335, cornerY: -0.016, tipX: 0.3495, tipY: -0.008 },
+  scales: [70, 26],
+  rays: { 1: 16, 2: 28, 3: 22, 4: 15, 5: 15, 6: 5 },
+  fins: [
+    { part: 1, base: { hypural: [0.038, -0.036] }, tip: [[-0.30, 0.07], [-0.36, 0.105], [-0.42, 0.13], [-0.44, 0.135], [-0.425, 0.08], [-0.415, 0.03], [-0.412, 0.0], [-0.415, -0.03], [-0.425, -0.08], [-0.44, -0.135], [-0.42, -0.13], [-0.36, -0.105], [-0.30, -0.068]], edge: 0.014, root: 0.015 },
+    { part: 2, base: { median: [0.17, -0.24], dorsal: true }, tip: [[0.17, 0.22], [0.11, 0.29], [0.05, 0.33], [-0.01, 0.34], [-0.07, 0.33], [-0.13, 0.3], [-0.19, 0.245], [-0.235, 0.17], [-0.265, 0.1]], edge: 0.012 },
+    { part: 3, base: { median: [-0.02, -0.24], dorsal: false }, tip: [[-0.02, -0.24], [-0.07, -0.28], [-0.13, -0.28], [-0.19, -0.235], [-0.235, -0.165], [-0.265, -0.095]], edge: 0.012 },
+    { part: 4, paired: true, base: { skin: [[0.16, 0.005], [0.155, -0.02], [0.147, -0.045]] }, tip: [[0.115, 0.015, 0.05], [0.075, 0.0, 0.065], [0.025, -0.03, 0.075], [0.02, -0.06, 0.068], [0.055, -0.088, 0.055], [0.105, -0.082, 0.042]], sway: 0.002, roll: 0.004, edge: 0.02, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.14, -0.16], [0.13, -0.168], [0.118, -0.17]] }, tip: [[0.12, -0.21, 0.02], [0.075, -0.25, 0.024], [0.04, -0.23, 0.018], [0.06, -0.19, 0.012]], sway: 0.0012, roll: 0.002, edge: 0.02, root: 0.005 },
+  ],
+};
 
-// Half width of the surface at (x, v), with the features that make a head read as a
-// head: the gill chamber swelling the cheek, the orbit taking the eyeball's shape, the
-// opercular edge and the mouth cleft.
-function sectionZ(x, v, section, y) {
-  const fullness = v >= 0 ? section.fullUp : section.fullDown;
-  const waist = Math.pow(
-    Math.max(0, 1 - Math.pow(Math.abs(v), SECTION_WAIST)),
-    1 / fullness,
-  );
-  const cheek =
-    1 +
-    0.09 *
-      Math.exp(-(((x - 0.2) / 0.045) ** 2)) *
-      THREE.MathUtils.smoothstep(-v, -0.35, 0.5);
-  let z = section.width * waist * cheek;
+const MOORISH_IDOL_PLAN = {
+  key: "moorish-idol",
+  // A disc nearly as deep as it is long, drawn out forward into a tubular snout with
+  // the mouth at its tip below the axis, and a sail of a dorsal whose front rays trail
+  // back past the tail as the filament.
+  top: [[0.35, -0.02], [0.335, -0.005], [0.31, 0.02], [0.28, 0.055], [0.25, 0.1], [0.21, 0.16], [0.16, 0.225], [0.1, 0.275], [0.04, 0.3], [-0.03, 0.298], [-0.1, 0.27], [-0.17, 0.205], [-0.225, 0.13], [-0.265, 0.07], [HYPURAL_X, 0.05]],
+  bottom: [[0.35, -0.036], [0.335, -0.05], [0.31, -0.065], [0.28, -0.088], [0.25, -0.12], [0.21, -0.16], [0.16, -0.2], [0.1, -0.235], [0.04, -0.25], [-0.03, -0.248], [-0.1, -0.228], [-0.17, -0.18], [-0.225, -0.118], [-0.265, -0.068], [HYPURAL_X, -0.048]],
+  width: [[0.35, 0.005], [0.335, 0.009], [0.31, 0.014], [0.28, 0.02], [0.24, 0.027], [0.18, 0.033], [0.1, 0.036], [0.0, 0.034], [-0.1, 0.028], [-0.18, 0.02], [-0.24, 0.012], [HYPURAL_X, 0.007]],
+  fullness: [[0.35, 2.4, 2.4], [0.28, 2.2, 2.3], [0.1, 1.8, 1.9], [-0.1, 1.75, 1.8], [-0.2, 1.6, 1.6], [HYPURAL_X, 1.5, 1.5]],
+  eye: { x: 0.215, y: 0.09, radiusX: 0.028, radiusY: 0.027, bulge: 0.009 },
+  opercle: { x: 0.16, bow: 0.035, y: 0.02, span: 0.17 },
+  mouth: { cornerX: 0.335, cornerY: -0.036, tipX: 0.3495, tipY: -0.028 },
+  scales: [80, 30],
+  rays: { 1: 16, 2: 30, 3: 26, 4: 17, 5: 17, 6: 5 },
+  fins: [
+    { part: 1, base: { hypural: [0.048, -0.046] }, tip: [[-0.30, 0.075], [-0.35, 0.1], [-0.41, 0.125], [-0.43, 0.13], [-0.42, 0.08], [-0.412, 0.03], [-0.41, 0.0], [-0.412, -0.03], [-0.42, -0.08], [-0.43, -0.13], [-0.41, -0.125], [-0.35, -0.1], [-0.30, -0.073]], edge: 0.014, root: 0.015 },
+    { part: 2, base: { median: [0.12, -0.23], dorsal: true, sink: 0.008 }, tip: [[0.125, 0.36], [0.08, 0.45], [0.02, 0.5], [-0.06, 0.5], [-0.16, 0.46], [-0.27, 0.4], [-0.38, 0.33], [-0.47, 0.26]], edge: 0.012, root: 0.01 },
+    { part: 3, base: { median: [-0.03, -0.23], dorsal: false }, tip: [[-0.03, -0.3], [-0.09, -0.34], [-0.16, -0.33], [-0.23, -0.28], [-0.28, -0.2], [-0.3, -0.12]], edge: 0.012 },
+    { part: 4, paired: true, base: { skin: [[0.16, 0.02], [0.155, -0.005], [0.148, -0.03]] }, tip: [[0.12, 0.03, 0.045], [0.085, 0.015, 0.06], [0.05, -0.01, 0.068], [0.045, -0.04, 0.062], [0.07, -0.065, 0.05], [0.11, -0.06, 0.04]], sway: 0.002, roll: 0.004, edge: 0.02, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.15, -0.18], [0.14, -0.19], [0.128, -0.195]] }, tip: [[0.13, -0.24, 0.02], [0.07, -0.31, 0.025], [0.02, -0.3, 0.018], [0.05, -0.23, 0.012]], sway: 0.0012, roll: 0.002, edge: 0.02, root: 0.005 },
+  ],
+};
 
-  const margin = opercleX(y);
-  z += 0.0013 * Math.exp(-(((x - margin - 0.009) / 0.008) ** 2));
-  z -= 0.0023 * Math.exp(-(((x - margin) / 0.005) ** 2));
+const PORCUPINE_PUFFER_PLAN = {
+  key: "porcupine-puffer",
+  // A barrel nearly as wide as it is deep, the head the broadest part, the eyes large
+  // and high on it, the dorsal and anal small and set far back opposite one another,
+  // the pectorals broad fans, the tail a paddle, and no pelvic fins.
+  top: [[0.35, 0.0], [0.34, 0.03], [0.325, 0.055], [0.30, 0.085], [0.265, 0.108], [0.22, 0.125], [0.16, 0.134], [0.09, 0.135], [0.02, 0.128], [-0.05, 0.114], [-0.12, 0.092], [-0.18, 0.066], [-0.23, 0.045], [-0.27, 0.032], [HYPURAL_X, 0.028]],
+  bottom: [[0.35, -0.012], [0.34, -0.04], [0.325, -0.065], [0.30, -0.09], [0.265, -0.11], [0.22, -0.125], [0.16, -0.135], [0.09, -0.138], [0.02, -0.132], [-0.05, -0.118], [-0.12, -0.094], [-0.18, -0.066], [-0.23, -0.044], [-0.27, -0.03], [HYPURAL_X, -0.026]],
+  width: [[0.35, 0.008], [0.335, 0.03], [0.31, 0.055], [0.28, 0.078], [0.24, 0.098], [0.18, 0.112], [0.1, 0.118], [0.0, 0.108], [-0.1, 0.082], [-0.18, 0.05], [-0.24, 0.026], [HYPURAL_X, 0.012]],
+  fullness: [[0.35, 2.5, 2.6], [0.2, 2.4, 2.5], [0.0, 2.3, 2.4], [-0.15, 2.1, 2.1], [HYPURAL_X, 1.9, 1.9]],
+  eye: { x: 0.245, y: 0.055, radiusX: 0.036, radiusY: 0.035, bulge: 0.014 },
+  opercle: { x: 0.175, bow: 0.02, y: 0.0, span: 0.1 },
+  mouth: { cornerX: 0.335, cornerY: -0.01, tipX: 0.3495, tipY: -0.004 },
+  scales: [200, 60],
+  rays: { 1: 10, 2: 14, 3: 14, 4: 22, 5: 22 },
+  fins: [
+    { part: 1, base: { hypural: [0.026, -0.024] }, tip: [[-0.31, 0.05], [-0.37, 0.075], [-0.42, 0.06], [-0.445, 0.025], [-0.45, 0.0], [-0.445, -0.025], [-0.42, -0.06], [-0.37, -0.075], [-0.31, -0.05]], edge: 0.026, root: 0.012 },
+    { part: 2, base: { median: [-0.11, -0.22], dorsal: true, sink: 0.005 }, tip: [[-0.12, 0.13], [-0.17, 0.15], [-0.22, 0.14], [-0.26, 0.1]], edge: 0.024 },
+    { part: 3, base: { median: [-0.11, -0.22], dorsal: false, sink: 0.005 }, tip: [[-0.12, -0.13], [-0.17, -0.15], [-0.22, -0.14], [-0.26, -0.1]], edge: 0.024 },
+    { part: 4, paired: true, base: { skin: [[0.16, 0.03], [0.152, 0.0], [0.142, -0.03], [0.13, -0.055]] }, tip: [[0.12, 0.06, 0.14], [0.07, 0.05, 0.165], [0.03, 0.02, 0.175], [0.015, -0.02, 0.17], [0.025, -0.06, 0.155], [0.06, -0.09, 0.135], [0.1, -0.09, 0.12]], sway: 0.003, roll: 0.006, edge: 0.026, root: 0.006 },
+  ],
+};
 
-  const cleft = Math.exp(-(((y - mouthCleftY(x)) / 0.0045) ** 2));
-  const gape = THREE.MathUtils.smoothstep(x, MOUTH.cornerX - 0.012, MOUTH.cornerX + 0.006);
-  z -= Math.min(0.0019 * cleft * gape, z * 0.42);
+const ROYAL_GRAMMA_PLAN = {
+  key: "royal-gramma",
+  // A small elongate basslet: a blunt head with a large eye and an oblique mouth, a
+  // dorsal along the whole back, a rounded tail and long pelvics.
+  top: [[0.35, 0.0], [0.34, 0.018], [0.325, 0.038], [0.30, 0.06], [0.265, 0.078], [0.22, 0.09], [0.16, 0.098], [0.09, 0.1], [0.02, 0.098], [-0.05, 0.09], [-0.12, 0.078], [-0.18, 0.062], [-0.23, 0.048], [-0.27, 0.04], [HYPURAL_X, 0.037]],
+  bottom: [[0.35, -0.012], [0.34, -0.032], [0.325, -0.05], [0.30, -0.066], [0.265, -0.078], [0.22, -0.086], [0.16, -0.09], [0.09, -0.091], [0.02, -0.088], [-0.05, -0.08], [-0.12, -0.068], [-0.18, -0.056], [-0.23, -0.045], [-0.27, -0.038], [HYPURAL_X, -0.035]],
+  width: [[0.35, 0.005], [0.335, 0.016], [0.31, 0.03], [0.28, 0.04], [0.24, 0.046], [0.18, 0.048], [0.1, 0.046], [0.0, 0.04], [-0.1, 0.032], [-0.18, 0.024], [-0.24, 0.016], [HYPURAL_X, 0.009]],
+  fullness: [[0.35, 2.4, 2.5], [0.25, 2.3, 2.4], [0.1, 2.1, 2.2], [-0.1, 1.9, 1.9], [-0.2, 1.7, 1.7], [HYPURAL_X, 1.6, 1.6]],
+  eye: { x: 0.268, y: 0.022, radiusX: 0.03, radiusY: 0.029, bulge: 0.011 },
+  opercle: { x: 0.185, bow: 0.025, y: -0.005, span: 0.07 },
+  mouth: { cornerX: 0.315, cornerY: -0.02, tipX: 0.3495, tipY: -0.003 },
+  scales: [30, 10],
+  rays: { 1: 15, 2: 22, 3: 12, 4: 15, 5: 15, 6: 5 },
+  fins: [
+    { part: 1, base: { hypural: [0.034, -0.032] }, tip: [[-0.31, 0.06], [-0.37, 0.085], [-0.42, 0.075], [-0.445, 0.04], [-0.45, 0.0], [-0.445, -0.04], [-0.42, -0.075], [-0.37, -0.085], [-0.31, -0.06]], edge: 0.028, root: 0.014 },
+    { part: 2, base: { median: [0.16, -0.22], dorsal: true }, tip: [[0.16, 0.13], [0.1, 0.145], [0.04, 0.15], [-0.03, 0.15], [-0.09, 0.15], [-0.14, 0.158], [-0.19, 0.162], [-0.23, 0.15], [-0.26, 0.1]], edge: 0.028 },
+    { part: 3, base: { median: [-0.08, -0.22], dorsal: false }, tip: [[-0.08, -0.13], [-0.13, -0.15], [-0.18, -0.158], [-0.23, -0.145], [-0.26, -0.1]], edge: 0.024 },
+    { part: 4, paired: true, base: { skin: [[0.175, -0.012], [0.168, -0.032], [0.16, -0.05]] }, tip: [[0.13, -0.01, 0.055], [0.095, -0.02, 0.07], [0.06, -0.04, 0.078], [0.05, -0.065, 0.07], [0.07, -0.085, 0.058], [0.11, -0.08, 0.048]], sway: 0.002, roll: 0.004, edge: 0.024, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.16, -0.085], [0.15, -0.09], [0.138, -0.09]] }, tip: [[0.14, -0.13, 0.025], [0.09, -0.175, 0.03], [0.04, -0.165, 0.022], [0.06, -0.12, 0.014]], sway: 0.0012, roll: 0.002, edge: 0.024, root: 0.005 },
+  ],
+};
 
-  const orbit = Math.hypot(
-    (x - EYE.x) / EYE.radiusX,
-    (y - EYE.y) / EYE.radiusY,
-  );
-  if (orbit < 1.3) {
-    const dome =
-      EYE.inset + EYE.bulge * Math.sqrt(Math.max(0, 1 - orbit * orbit));
-    const weight = 1 - THREE.MathUtils.smoothstep(orbit, 0.92, 1.62);
-    z = THREE.MathUtils.lerp(z, dome, weight);
+export const PLANS = {
+  chromis: CHROMIS_PLAN,
+  ocellaris: CLOWNFISH_PLAN,
+  "regal-tang": REGAL_TANG_PLAN,
+  "yellow-tang": YELLOW_TANG_PLAN,
+  "moorish-idol": MOORISH_IDOL_PLAN,
+  "porcupine-puffer": PORCUPINE_PUFFER_PLAN,
+  "royal-gramma": ROYAL_GRAMMA_PLAN,
+};
+
+// ---------------------------------------------------------------------------------
+// The body surface of a plan.
+
+class Body {
+  constructor(plan) {
+    this.plan = plan;
+    this.top = splineThrough(plan.top);
+    this.bottom = splineThrough(plan.bottom);
+    this.width = splineThrough(plan.width);
+    this.fullUp = splineThrough(plan.fullness.map(([x, up]) => [x, up]));
+    this.fullDown = splineThrough(plan.fullness.map(([x, , down]) => [x, down]));
+    this.opercle = plan.opercle;
+    this.mouth = plan.mouth;
+    // The eyeball is a flattened lens seated in the orbit. The orbit is sunk into the
+    // skin so that the dome of the cornea rises just clear of the surrounding surface,
+    // and the body surface takes on the eyeball's shape inside the orbit, so the eye can
+    // never part from the head.
+    const eye = plan.eye;
+    const section = this.profile(eye.x);
+    const v = THREE.MathUtils.clamp(this.depthCoordinate(section, eye.y), -1, 1);
+    const flank = this.sectionZ(eye.x, v, section, eye.y, false);
+    this.eye = {
+      ...eye,
+      inset: flank - eye.bulge * 0.85,
+      pupil: 0.6,
+      iris: 0.93,
+      rim: 0.985,
+    };
   }
-  return Math.max(z, 0.0004);
-}
 
-function surfacePoint(x, v, side, target = new THREE.Vector3()) {
-  const section = profile(x);
-  const y = sectionY(section, v);
-  return target.set(x, y, side * sectionZ(x, v, section, y));
-}
-
-// Depth coordinate of a given height, so fin roots and lip ribbons can be placed by
-// anatomy (an oblique insertion line) rather than by guessing a v.
-function depthCoordinate(section, y) {
-  const centre = (section.top + section.bottom) * 0.5;
-  return y >= centre
-    ? (y - centre) / Math.max(section.top - centre, 1e-6)
-    : (y - centre) / Math.max(centre - section.bottom, 1e-6);
-}
-
-function surfaceAt(x, y, side, target = new THREE.Vector3()) {
-  const section = profile(x);
-  const v = THREE.MathUtils.clamp(depthCoordinate(section, y), -1, 1);
-  return target.set(x, y, side * sectionZ(x, v, section, y));
-}
-
-function surfaceNormal(x, y, side, target = new THREE.Vector3()) {
-  const step = 0.0015;
-  const here = surfaceAt(x, y, side);
-  const alongX = surfaceAt(x + step, y, side).sub(here);
-  const alongY = surfaceAt(x, y + step, side).sub(here);
-  return target
-    .crossVectors(alongX, alongY)
-    .multiplyScalar(side)
-    .normalize();
-}
-
-function bodyRows(count) {
-  const samples = 1600;
-  const density = splineThrough(ROW_DENSITY.map((knot) => [...knot]).reverse());
-  const cumulative = [0];
-  for (let i = 1; i <= samples; i++) {
-    const x = HYPURAL_X + ((SNOUT_X - HYPURAL_X) * i) / samples;
-    cumulative.push(cumulative[i - 1] + density(x));
+  profile(x) {
+    const clamped = THREE.MathUtils.clamp(x, HYPURAL_X, SNOUT_X);
+    return {
+      top: this.top(clamped),
+      bottom: this.bottom(clamped),
+      width: this.width(clamped),
+      fullUp: this.fullUp(clamped),
+      fullDown: this.fullDown(clamped),
+    };
   }
-  const total = cumulative[samples];
-  const rows = [];
-  let cursor = 0;
-  for (let row = 0; row <= count; row++) {
-    const wanted = (total * row) / count;
-    while (cursor < samples && cumulative[cursor + 1] < wanted) cursor++;
-    const span = cumulative[cursor + 1] - cumulative[cursor] || 1;
-    const fraction = (wanted - cumulative[cursor]) / span;
-    rows.push(
-      HYPURAL_X +
-        ((SNOUT_X - HYPURAL_X) * (cursor + fraction)) / samples,
+
+  opercleX(y) {
+    const o = this.opercle;
+    const t = THREE.MathUtils.clamp((y - o.y) / o.span, -1, 1);
+    return o.x - o.bow * (1 - t * t);
+  }
+
+  mouthCleftY(x) {
+    const m = this.mouth;
+    const k = THREE.MathUtils.clamp((x - m.cornerX) / (m.tipX - m.cornerX), 0, 1);
+    return THREE.MathUtils.lerp(m.cornerY, m.tipY, k * k * (3 - 2 * k));
+  }
+
+  // Depth coordinate v runs -1 at the ventral midline to +1 at the dorsal. Returns the
+  // height of the surface there.
+  sectionY(section, v) {
+    const centre = (section.top + section.bottom) * 0.5;
+    return v >= 0
+      ? centre + v * (section.top - centre)
+      : centre + v * (centre - section.bottom);
+  }
+
+  depthCoordinate(section, y) {
+    const centre = (section.top + section.bottom) * 0.5;
+    return y >= centre
+      ? (y - centre) / Math.max(section.top - centre, 1e-6)
+      : (y - centre) / Math.max(centre - section.bottom, 1e-6);
+  }
+
+  // Half width of the surface at (x, v), with the features that make a head read as a
+  // head: the gill chamber swelling the cheek, the orbit taking the eyeball's shape,
+  // the opercular edge and the mouth cleft.
+  sectionZ(x, v, section, y, withOrbit = true) {
+    const fullness = v >= 0 ? section.fullUp : section.fullDown;
+    const waist = Math.pow(
+      Math.max(0, 1 - Math.pow(Math.abs(v), SECTION_WAIST)),
+      1 / fullness,
     );
-  }
-  return rows.reverse();
-}
+    const cheekX = this.opercle.x + 0.015;
+    const cheek =
+      1 +
+      0.09 *
+        Math.exp(-(((x - cheekX) / 0.045) ** 2)) *
+        THREE.MathUtils.smoothstep(-v, -0.35, 0.5);
+    let z = section.width * waist * cheek;
 
-// The body shell: a closed tube whose columns start on the dorsal midline, so the uv
-// seam and the normals' only discontinuity fall under the dorsal fin. uv.x runs 0 at
-// the snout to 1 at the hypural; uv.y is the arc fraction from the dorsal midline to
-// the ventral, identical on both flanks, which is how scale rows actually sit.
-function bodyGeometry() {
-  const positions = [];
-  const uvs = [];
-  const indices = [];
-  const rows = bodyRows(BODY_ROWS);
-  const columns = BODY_COLUMNS;
-  const point = new THREE.Vector3();
-  const previous = new THREE.Vector3();
-  const halfArc = [];
-  const arcs = [];
+    const margin = this.opercleX(y);
+    z += 0.0013 * Math.exp(-(((x - margin - 0.009) / 0.008) ** 2));
+    z -= 0.0023 * Math.exp(-(((x - margin) / 0.005) ** 2));
 
-  for (const x of rows) {
-    let arc = 0;
-    halfArc.length = 0;
-    halfArc.push(0);
-    surfacePoint(x, 1, 1, previous);
-    for (let column = 1; column <= columns / 2; column++) {
-      const v = Math.cos((column / (columns / 2)) * Math.PI);
-      surfacePoint(x, v, 1, point);
-      arc += point.distanceTo(previous);
-      previous.copy(point);
-      halfArc.push(arc);
+    const m = this.mouth;
+    const cleft = Math.exp(-(((y - this.mouthCleftY(x)) / 0.0045) ** 2));
+    const gape = THREE.MathUtils.smoothstep(x, m.cornerX - 0.012, m.cornerX + 0.006);
+    z -= Math.min(0.0019 * cleft * gape, z * 0.42);
+
+    if (withOrbit) {
+      const eye = this.eye;
+      const orbit = Math.hypot((x - eye.x) / eye.radiusX, (y - eye.y) / eye.radiusY);
+      if (orbit < 1.3) {
+        const dome = eye.inset + eye.bulge * Math.sqrt(Math.max(0, 1 - orbit * orbit));
+        const weight = 1 - THREE.MathUtils.smoothstep(orbit, 0.92, 1.62);
+        z = THREE.MathUtils.lerp(z, dome, weight);
+      }
     }
-    arcs.push(halfArc.map((value) => value / Math.max(arc, 1e-6)));
+    return Math.max(z, 0.0004);
   }
 
-  rows.forEach((x, row) => {
-    for (let column = 0; column < columns; column++) {
-      const s = (column / columns) * 2;
-      const mirrored = s <= 1;
-      const t = mirrored ? s : 2 - s;
-      const v = Math.cos(t * Math.PI);
-      surfacePoint(x, v, mirrored ? 1 : -1, point);
-      positions.push(point.x, point.y, point.z);
-      const index = Math.round(t * (columns / 2));
-      uvs.push((SNOUT_X - x) / STANDARD_LENGTH, arcs[row][index]);
-    }
-  });
-
-  for (let row = 0; row < rows.length - 1; row++) {
-    for (let column = 0; column < columns; column++) {
-      const next = (column + 1) % columns;
-      const a = row * columns + column;
-      const b = row * columns + next;
-      const c = (row + 1) * columns + column;
-      const d = (row + 1) * columns + next;
-      indices.push(a, c, b, b, c, d);
-    }
+  surfacePoint(x, v, side, target = new THREE.Vector3()) {
+    const section = this.profile(x);
+    const y = this.sectionY(section, v);
+    return target.set(x, y, side * this.sectionZ(x, v, section, y));
   }
 
-  // Close both ends so the shell is watertight for the shadow pass and nothing can be
-  // seen through the caudal peduncle when the tail swings across the camera.
-  for (const [row, flip] of [
-    [0, false],
-    [rows.length - 1, true],
-  ]) {
-    const centre = new THREE.Vector3();
-    for (let column = 0; column < columns; column++) {
-      const index = row * columns + column;
-      centre.x += positions[index * 3] / columns;
-      centre.y += positions[index * 3 + 1] / columns;
-      centre.z += positions[index * 3 + 2] / columns;
-    }
-    const hub = positions.length / 3;
-    positions.push(centre.x, centre.y, centre.z);
-    uvs.push((SNOUT_X - centre.x) / STANDARD_LENGTH, 0.5);
-    for (let column = 0; column < columns; column++) {
-      const a = row * columns + column;
-      const b = row * columns + ((column + 1) % columns);
-      if (flip) indices.push(hub, b, a);
-      else indices.push(hub, a, b);
-    }
+  surfaceAt(x, y, side, target = new THREE.Vector3()) {
+    const section = this.profile(x);
+    const v = THREE.MathUtils.clamp(this.depthCoordinate(section, y), -1, 1);
+    return target.set(x, y, side * this.sectionZ(x, v, section, y));
   }
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(positions, 3),
-  );
-  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
+  surfaceNormal(x, y, side, target = new THREE.Vector3()) {
+    const step = 0.0015;
+    const here = this.surfaceAt(x, y, side);
+    const alongX = this.surfaceAt(x + step, y, side).sub(here);
+    const alongY = this.surfaceAt(x, y + step, side).sub(here);
+    return target.crossVectors(alongX, alongY).multiplyScalar(side).normalize();
+  }
+
+  // Rows are spaced by the integral of a density that peaks where the profile turns
+  // hardest: the snout, the orbit, the opercular margin and the caudal peduncle.
+  rows(count) {
+    const gauss = (x, centre, width) => Math.exp(-(((x - centre) / width) ** 2));
+    const density = (x) =>
+      1 +
+      1.6 * gauss(x, SNOUT_X, 0.045) +
+      1.8 * gauss(x, this.eye.x, 0.05) +
+      1.2 * gauss(x, this.opercle.x, 0.04) +
+      1.2 * gauss(x, HYPURAL_X, 0.05);
+    const samples = 1600;
+    const cumulative = [0];
+    for (let i = 1; i <= samples; i++) {
+      const x = HYPURAL_X + ((SNOUT_X - HYPURAL_X) * i) / samples;
+      cumulative.push(cumulative[i - 1] + density(x));
+    }
+    const total = cumulative[samples];
+    const rows = [];
+    let cursor = 0;
+    for (let row = 0; row <= count; row++) {
+      const wanted = (total * row) / count;
+      while (cursor < samples && cumulative[cursor + 1] < wanted) cursor++;
+      const span = cumulative[cursor + 1] - cumulative[cursor] || 1;
+      const fraction = (wanted - cumulative[cursor]) / span;
+      rows.push(HYPURAL_X + ((SNOUT_X - HYPURAL_X) * (cursor + fraction)) / samples);
+    }
+    return rows.reverse();
+  }
+
+  // The body shell: a closed tube whose columns start on the dorsal midline, so the uv
+  // seam and the normals' only discontinuity fall under the dorsal fin. uv.x runs 0 at
+  // the snout to 1 at the hypural; uv.y is the arc fraction from the dorsal midline to
+  // the ventral, identical on both flanks, which is how scale rows actually sit.
+  geometry() {
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    const rows = this.rows(BODY_ROWS);
+    const columns = BODY_COLUMNS;
+    const point = new THREE.Vector3();
+    const previous = new THREE.Vector3();
+    const halfArc = [];
+    const arcs = [];
+
+    for (const x of rows) {
+      let arc = 0;
+      halfArc.length = 0;
+      halfArc.push(0);
+      this.surfacePoint(x, 1, 1, previous);
+      for (let column = 1; column <= columns / 2; column++) {
+        const v = Math.cos((column / (columns / 2)) * Math.PI);
+        this.surfacePoint(x, v, 1, point);
+        arc += point.distanceTo(previous);
+        previous.copy(point);
+        halfArc.push(arc);
+      }
+      arcs.push(halfArc.map((value) => value / Math.max(arc, 1e-6)));
+    }
+
+    rows.forEach((x, row) => {
+      for (let column = 0; column < columns; column++) {
+        const s = (column / columns) * 2;
+        const mirrored = s <= 1;
+        const t = mirrored ? s : 2 - s;
+        const v = Math.cos(t * Math.PI);
+        this.surfacePoint(x, v, mirrored ? 1 : -1, point);
+        positions.push(point.x, point.y, point.z);
+        const index = Math.round(t * (columns / 2));
+        uvs.push((SNOUT_X - x) / STANDARD_LENGTH, arcs[row][index]);
+      }
+    });
+
+    for (let row = 0; row < rows.length - 1; row++) {
+      for (let column = 0; column < columns; column++) {
+        const next = (column + 1) % columns;
+        const a = row * columns + column;
+        const b = row * columns + next;
+        const c = (row + 1) * columns + column;
+        const d = (row + 1) * columns + next;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    // Close both ends so the shell is watertight for the shadow pass and nothing can be
+    // seen through the caudal peduncle when the tail swings across the camera.
+    for (const [row, flip] of [
+      [0, false],
+      [rows.length - 1, true],
+    ]) {
+      const centre = new THREE.Vector3();
+      for (let column = 0; column < columns; column++) {
+        const index = row * columns + column;
+        centre.x += positions[index * 3] / columns;
+        centre.y += positions[index * 3 + 1] / columns;
+        centre.z += positions[index * 3 + 2] / columns;
+      }
+      const hub = positions.length / 3;
+      positions.push(centre.x, centre.y, centre.z);
+      uvs.push((SNOUT_X - centre.x) / STANDARD_LENGTH, 0.5);
+      for (let column = 0; column < columns; column++) {
+        const a = row * columns + column;
+        const b = row * columns + ((column + 1) % columns);
+        if (flip) indices.push(hub, b, a);
+        else indices.push(hub, a, b);
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+  }
 }
 
 function geometryBuilder() {
@@ -440,23 +558,11 @@ function geometryBuilder() {
     },
     finish() {
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(positions, 3),
-      );
-      geometry.setAttribute(
-        "normal",
-        new THREE.Float32BufferAttribute(normals, 3),
-      );
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
       geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-      geometry.setAttribute(
-        "aPart",
-        new THREE.Float32BufferAttribute(parts, 1),
-      );
-      geometry.setAttribute(
-        "aFinProgress",
-        new THREE.Float32BufferAttribute(progress, 1),
-      );
+      geometry.setAttribute("aPart", new THREE.Float32BufferAttribute(parts, 1));
+      geometry.setAttribute("aFinProgress", new THREE.Float32BufferAttribute(progress, 1));
       geometry.setIndex(indices);
       return geometry;
     },
@@ -465,15 +571,9 @@ function geometryBuilder() {
 
 function fromArrays(positions, normals, uvs, indices) {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(positions, 3),
-  );
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   if (normals.length) {
-    geometry.setAttribute(
-      "normal",
-      new THREE.Float32BufferAttribute(normals, 3),
-    );
+    geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
   }
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
@@ -483,7 +583,7 @@ function fromArrays(positions, normals, uvs, indices) {
 // A spherical-cap patch of the eyeball, cut between two radius fractions. All three
 // eye patches share the analytic normal of the same lens, so the pupil, iris and
 // corneal rim meet without a shading crease.
-function eyeCap(side, inner, outer, rings, segments, lift, rimLift) {
+function eyeCap(eye, side, inner, outer, rings, segments, lift, rimLift) {
   const positions = [],
     normals = [],
     uvs = [],
@@ -497,14 +597,14 @@ function eyeCap(side, inner, outer, rings, segments, lift, rimLift) {
       const dx = Math.cos(angle) * f;
       const dy = Math.sin(angle) * f;
       const normal = new THREE.Vector3(
-        (dx * EYE.radiusX) / (EYE.bulge * EYE.bulge),
-        (dy * EYE.radiusY) / (EYE.bulge * EYE.bulge),
-        (side * height) / EYE.bulge,
+        (dx * eye.radiusX) / (eye.bulge * eye.bulge),
+        (dy * eye.radiusY) / (eye.bulge * eye.bulge),
+        (side * height) / eye.bulge,
       ).normalize();
       positions.push(
-        EYE.x + dx * EYE.radiusX + normal.x * clearance,
-        EYE.y + dy * EYE.radiusY + normal.y * clearance,
-        side * (EYE.inset + EYE.bulge * height) + normal.z * clearance,
+        eye.x + dx * eye.radiusX + normal.x * clearance,
+        eye.y + dy * eye.radiusY + normal.y * clearance,
+        side * (eye.inset + eye.bulge * height) + normal.z * clearance,
       );
       normals.push(normal.x, normal.y, normal.z);
       uvs.push(segment / segments, ring / rings);
@@ -520,22 +620,22 @@ function eyeCap(side, inner, outer, rings, segments, lift, rimLift) {
 
 // A narrow strip laid along the mouth cleft, offset from the skin along its normal:
 // negative for the dark slit at the bottom of the groove, positive for the lip above it.
-function cleftRibbon(side, fromY, toY, offset, segments) {
+function cleftRibbon(body, side, fromY, toY, offset, segments) {
   const positions = [],
     normals = [],
     uvs = [],
     indices = [];
   const point = new THREE.Vector3();
   const normal = new THREE.Vector3();
+  const m = body.mouth;
   for (let segment = 0; segment <= segments; segment++) {
     const k = segment / segments;
-    const x = THREE.MathUtils.lerp(MOUTH.cornerX - 0.004, MOUTH.tipX, k);
+    const x = THREE.MathUtils.lerp(m.cornerX - 0.004, m.tipX, k);
     const taper = Math.sin(Math.min(1, 1.25 * (1 - k)) * Math.PI * 0.5);
     for (const edge of [0, 1]) {
-      const y =
-        mouthCleftY(x) + THREE.MathUtils.lerp(fromY, toY, edge) * taper;
-      surfaceAt(x, y, side, point);
-      surfaceNormal(x, y, side, normal);
+      const y = body.mouthCleftY(x) + THREE.MathUtils.lerp(fromY, toY, edge) * taper;
+      body.surfaceAt(x, y, side, point);
+      body.surfaceNormal(x, y, side, normal);
       positions.push(
         point.x + normal.x * offset,
         point.y + normal.y * offset,
@@ -564,13 +664,12 @@ function curveThrough(points) {
 
 // A fin is a fan of rays. `base` is the insertion line in the skin, `tip` the free
 // margin; between rays the membrane falls short of the ray tips, which is what gives a
-// real fin its finely scalloped edge. Rays become tapered tubes in the opaque mesh,
-// the membrane a single double-sided sheet.
+// real fin its finely scalloped edge. The whole fin is one double-sided sheet; the rays
+// are drawn by the skin shader.
 function finFan(
-  { part, base, tip, sway = 0, roll = 0, edge = 0.055, root = 0.006 },
+  { part, rays, base, tip, sway = 0, roll = 0, edge = 0.055, root = 0.006 },
   membranes,
 ) {
-  const rays = FIN_RAYS[part] || 3;
   const columns = (rays - 1) * RAY_SUBDIVISIONS;
   const baseCurve = curveThrough(base);
   const tipCurve = curveThrough(tip);
@@ -582,8 +681,8 @@ function finFan(
   const free = new THREE.Vector3();
   const point = new THREE.Vector3();
   const inward = new THREE.Vector3();
-  // The membrane falls short of the ray tips between rays, and no two rays reach
-  // exactly the same distance: that is what makes a real fin's edge finely uneven.
+  // No two rays reach exactly the same distance: that is what makes a real fin's edge
+  // finely uneven.
   const margin = (along) => {
     const rayIndex = along * (rays - 1);
     const between = 0.5 - 0.5 * Math.cos(TAU * rayIndex);
@@ -629,213 +728,77 @@ function finFan(
 }
 
 // Insertion lines read off the body surface, so every fin is rooted in the skin
-// wherever the profile happens to run.
-function insertion(points, side = 1) {
-  return points.map(([x, y]) => surfaceAt(x, y, side).toArray());
-}
-
-function medianInsertion(from, to, samples, dorsal, sink) {
-  const line = [];
-  for (let i = 0; i <= samples; i++) {
-    const x = THREE.MathUtils.lerp(from, to, i / samples);
-    const section = profile(x);
-    const y = dorsal ? section.top - sink : section.bottom + sink;
-    line.push([x, y, 0]);
+// wherever the profile happens to run. A median fin runs along the dorsal or ventral
+// midline; the caudal fin along the hypural margin; a paired fin sits in the skin of
+// one flank, mirrored for the other.
+function insertionLine(body, base, side) {
+  if (base.median) {
+    const [from, to] = base.median;
+    const sink = base.sink ?? 0.006;
+    const samples = Math.max(4, Math.round(Math.abs(to - from) / 0.04));
+    const line = [];
+    for (let i = 0; i <= samples; i++) {
+      const x = THREE.MathUtils.lerp(from, to, i / samples);
+      const section = body.profile(x);
+      const y = base.dorsal ? section.top - sink : section.bottom + sink;
+      line.push([x, y, 0]);
+    }
+    return line;
   }
-  return line;
-}
-
-// Reef fish come in shapes a tetra does not: a clownfish is deep and round, a tang a
-// disc, a firefish a spindle. Until each has anatomy of its own, the tetra is reshaped:
-// `depth` scales height and `width` scales breadth, fully over the trunk and tapering
-// off toward the snout and the tail tip, so the eye stays round and the caudal fork
-// keeps its shape while the body between them deepens. Fins ride along with the trunk,
-// which is right: a deep fish carries tall fins.
-function reshape(geometry, depth, width) {
-  if (depth === 1 && width === 1) return geometry;
-  const position = geometry.attributes.position;
-  const normal = geometry.attributes.normal;
-  const n = new THREE.Vector3();
-  for (let i = 0; i < position.count; i++) {
-    const x = position.getX(i);
-    const trunk =
-      THREE.MathUtils.smoothstep(x, -0.44, -0.2) * (1 - 0.65 * THREE.MathUtils.smoothstep(x, 0.15, 0.35));
-    const sy = 1 + (depth - 1) * (0.3 + 0.7 * trunk);
-    const sz = 1 + (width - 1) * (0.3 + 0.7 * trunk);
-    position.setY(i, position.getY(i) * sy);
-    position.setZ(i, position.getZ(i) * sz);
-    n.fromBufferAttribute(normal, i);
-    n.y /= sy;
-    n.z /= sz;
-    n.normalize();
-    normal.setXYZ(i, n.x, n.y, n.z);
+  if (base.hypural) {
+    const [top, bottom] = base.hypural;
+    return [
+      [HYPURAL_X + 0.024, top, 0],
+      [HYPURAL_X + 0.009, top * 0.62, 0],
+      [HYPURAL_X + 0.004, 0, 0],
+      [HYPURAL_X + 0.009, bottom * 0.62, 0],
+      [HYPURAL_X + 0.024, bottom, 0],
+    ];
   }
-  position.needsUpdate = true;
-  normal.needsUpdate = true;
-  return geometry;
+  return base.skin.map(([x, y]) => body.surfaceAt(x, y, side).toArray());
 }
 
-export function makeAnatomy({ depth = 1, width = 1 } = {}) {
+export function makeAnatomy(plan) {
+  const body = new Body(plan);
   const opaque = geometryBuilder();
   const membranes = geometryBuilder();
-  opaque.add(bodyGeometry(), 0);
+  opaque.add(body.geometry(), 0);
 
   for (const side of [-1, 1]) {
-    opaque.add(eyeCap(side, 0, EYE.pupil, 4, 30, 0.0009, 0.0013), 8);
-    opaque.add(eyeCap(side, EYE.pupil, EYE.iris, 5, 30, 0.0006, 0.0013), 7);
-    opaque.add(eyeCap(side, EYE.iris, EYE.rim, 2, 30, 0.0004, 0.0013), 10);
-    opaque.add(cleftRibbon(side, -0.0016, 0.0016, -0.001, 7), 9);
-    opaque.add(cleftRibbon(side, 0.0022, 0.005, 0.0005, 7), 11);
+    opaque.add(eyeCap(body.eye, side, 0, body.eye.pupil, 4, 30, 0.0009, 0.0013), 8);
+    opaque.add(eyeCap(body.eye, side, body.eye.pupil, body.eye.iris, 5, 30, 0.0006, 0.0013), 7);
+    opaque.add(eyeCap(body.eye, side, body.eye.iris, body.eye.rim, 2, 30, 0.0004, 0.0013), 10);
+    opaque.add(cleftRibbon(body, side, -0.0016, 0.0016, -0.001, 7), 9);
+    opaque.add(cleftRibbon(body, side, 0.0022, 0.005, 0.0005, 7), 11);
   }
 
-  // Caudal fin: 19 principal rays fanning from the hypural plate into two rounded
-  // lobes, the median rays a third of the lobe length so the fork stays deep.
-  finFan(
-    {
-      part: 1,
-      base: [
-        [-0.271, 0.032, 0],
-        [-0.286, 0.021, 0],
-        [-0.292, 0, 0],
-        [-0.286, -0.02, 0],
-        [-0.271, -0.031, 0],
-      ],
-      tip: [
-        [-0.302, 0.045, 0],
-        [-0.362, 0.082, 0],
-        [-0.414, 0.094, 0],
-        [-0.436, 0.096, 0],
-        [-0.43, 0.073, 0],
-        [-0.398, 0.038, 0],
-        [-0.347, 0.001, 0],
-        [-0.394, -0.036, 0],
-        [-0.426, -0.071, 0],
-        [-0.434, -0.093, 0],
-        [-0.412, -0.094, 0],
-        [-0.356, -0.077, 0],
-        [-0.3, -0.042, 0],
-      ],
-      edge: 0.022,
-      root: 0.015,
-    },
-    membranes,
-  );
-
-  // Dorsal fin at 52% SL: a short base, the apex over the third ray, the margin
-  // falling away concavely behind it.
-  finFan(
-    {
-      part: 2,
-      base: medianInsertion(0.015, -0.056, 4, true, 0.006),
-      tip: [
-        [0.022, 0.113, 0],
-        [0.012, 0.155, 0],
-        [-0.007, 0.176, 0],
-        [-0.025, 0.166, 0],
-        [-0.04, 0.147, 0],
-        [-0.051, 0.122, 0],
-        [-0.058, 0.098, 0],
-      ],
-      edge: 0.02,
-    },
-    membranes,
-  );
-
-  // Anal fin: the long, low, falcate base that marks the genus.
-  finFan(
-    {
-      part: 3,
-      base: medianInsertion(-0.04, -0.205, 6, false, 0.006),
-      tip: [
-        [-0.036, -0.132, 0],
-        [-0.052, -0.162, 0],
-        [-0.073, -0.159, 0],
-        [-0.098, -0.146, 0],
-        [-0.128, -0.128, 0],
-        [-0.158, -0.106, 0],
-        [-0.185, -0.084, 0],
-        [-0.208, -0.07, 0],
-      ],
-      edge: 0.018,
-    },
-    membranes,
-  );
-
-  // Adipose fin at 84% SL: a small rayless flap of skin, red in this species.
-  finFan(
-    {
-      part: 12,
-      base: medianInsertion(-0.178, -0.206, 3, true, 0.004),
-      tip: [
-        [-0.179, 0.062, 0],
-        [-0.194, 0.067, 0],
-        [-0.208, 0.055, 0],
-      ],
-      edge: 0.02,
-      root: 0.003,
-    },
-    membranes,
-  );
-
-  for (const side of [-1, 1]) {
-    // Pectorals inserted low and just behind the opercular margin, reaching back to
-    // the pelvic origin.
-    finFan(
-      {
-        part: side > 0 ? 4 : 5,
-        base: insertion(
-          [
-            [0.174, -0.034],
-            [0.166, -0.048],
-            [0.156, -0.062],
-          ],
-          side,
-        ),
-        tip: [
-          [0.130, -0.040, side * 0.052],
-          [0.110, -0.053, side * 0.068],
-          [0.086, -0.068, side * 0.076],
-          [0.079, -0.085, side * 0.067],
-          [0.097, -0.095, side * 0.053],
-          [0.126, -0.088, side * 0.042],
-        ],
-        sway: side * 0.002,
-        roll: side * 0.004,
-        edge: 0.024,
-        root: 0.005,
-      },
-      membranes,
-    );
-    // Pelvics at 46% SL, close to the ventral midline.
-    finFan(
-      {
-        part: 6,
-        base: insertion(
-          [
-            [0.064, -0.093],
-            [0.05, -0.0975],
-            [0.038, -0.0975],
-          ],
-          side,
-        ),
-        tip: [
-          [0.04, -0.128, side * 0.028],
-          [0.014, -0.141, side * 0.034],
-          [-0.006, -0.131, side * 0.026],
-          [0.002, -0.111, side * 0.016],
-        ],
-        sway: side * 0.0012,
-        roll: side * 0.002,
-        edge: 0.024,
-        root: 0.005,
-      },
-      membranes,
-    );
+  for (const fin of plan.fins) {
+    const rays = plan.rays[fin.part] || 3;
+    if (!fin.paired) {
+      finFan({ ...fin, rays, base: insertionLine(body, fin.base, 1) }, membranes);
+      continue;
+    }
+    for (const side of [1, -1]) {
+      finFan(
+        {
+          ...fin,
+          rays,
+          part: fin.part === 4 ? (side > 0 ? 4 : 5) : fin.part,
+          base: insertionLine(body, fin.base, side),
+          tip: fin.tip.map(([x, y, z]) => [x, y, side * z]),
+          sway: side * (fin.sway || 0),
+          roll: side * (fin.roll || 0),
+        },
+        membranes,
+      );
+    }
   }
 
   return {
-    body: reshape(opaque.finish(), depth, width),
-    fins: reshape(membranes.finish(), depth, width),
+    body: opaque.finish(),
+    fins: membranes.finish(),
+    plan,
+    eye: body.eye,
   };
 }
 
@@ -881,8 +844,12 @@ export const CHROMIS = {
   irisDark: [0.26, 0.32, 0.15],
 };
 
-export function applySkin(shader, palette = CHROMIS) {
+export function applySkin(shader, palette = CHROMIS, plan = CHROMIS_PLAN) {
   const p = { ...CHROMIS, ...palette };
+  const eye = plan.eye;
+  const opercle = plan.opercle;
+  const mouth = plan.mouth;
+  const rays = plan.rays;
   if (!/vWaterPosition/.test(shader.vertexShader)) {
     waterLitShader(shader, {
       perLight: /* glsl */ `
@@ -915,9 +882,9 @@ export function applySkin(shader, palette = CHROMIS) {
 
       const vec3 FISH_ABSORPTION = vec3(${MUSCLE_ABSORPTION.map(glsl).join(", ")});
       const vec3 FISH_FIN_PIGMENT = ${c3(p.finAbsorption)};
-      const vec2 FISH_SCALES = vec2(${glsl(SCALE_ROWS[0])}, ${glsl(SCALE_ROWS[1])});
-      const vec2 FISH_EYE = vec2(${glsl(EYE.x)}, ${glsl(EYE.y)});
-      const vec2 FISH_EYE_RADIUS = vec2(${glsl(EYE.radiusX)}, ${glsl(EYE.radiusY)});
+      const vec2 FISH_SCALES = vec2(${glsl(plan.scales[0])}, ${glsl(plan.scales[1])});
+      const vec2 FISH_EYE = vec2(${glsl(eye.x)}, ${glsl(eye.y)});
+      const vec2 FISH_EYE_RADIUS = vec2(${glsl(eye.radiusX)}, ${glsl(eye.radiusY)});
 
       float fishHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
@@ -930,7 +897,7 @@ export function applySkin(shader, palette = CHROMIS) {
       }
 
       // Imbricate rows: every row is offset half a scale from its neighbour and the
-      // rows run slightly diagonally, as a characin's do.
+      // rows run slightly diagonally.
       vec2 fishScaleGrid() {
         vec2 grid = vFishUV * FISH_SCALES;
         grid.y += 0.11 * sin(grid.x * 0.62 + 1.3);
@@ -942,8 +909,8 @@ export function applySkin(shader, palette = CHROMIS) {
         return 1.0 - smoothstep(0.42, 1.1, max(fwidth(grid.x), fwidth(grid.y)));
       }
       float fishOpercleX(float y) {
-        float t = clamp((y - ${glsl(OPERCLE.y)}) / ${glsl(OPERCLE.span)}, -1.0, 1.0);
-        return ${glsl(OPERCLE.x)} - ${glsl(OPERCLE.bow)} * (1.0 - t * t);
+        float t = clamp((y - ${glsl(opercle.y)}) / ${glsl(opercle.span)}, -1.0, 1.0);
+        return ${glsl(opercle.x)} - ${glsl(opercle.bow)} * (1.0 - t * t);
       }
       // Scales stop at the caudal fin base and at the bare bony gill cover.
       float fishScaleMask() {
@@ -963,11 +930,11 @@ export function applySkin(shader, palette = CHROMIS) {
         return length((vSkinPoint.xy - FISH_EYE) / FISH_EYE_RADIUS);
       }
       float fishCleftY(float x) {
-        float k = clamp((x - ${glsl(MOUTH.cornerX)}) / ${glsl(MOUTH.tipX - MOUTH.cornerX)}, 0.0, 1.0);
-        return mix(${glsl(MOUTH.cornerY)}, ${glsl(MOUTH.tipY)}, k * k * (3.0 - 2.0 * k));
+        float k = clamp((x - ${glsl(mouth.cornerX)}) / ${glsl(mouth.tipX - mouth.cornerX)}, 0.0, 1.0);
+        return mix(${glsl(mouth.cornerY)}, ${glsl(mouth.tipY)}, k * k * (3.0 - 2.0 * k));
       }
       float fishRayCount(float part) {
-        ${Object.entries(FIN_RAYS)
+        ${Object.entries(rays)
           .map(([part, count]) => `if (part < ${glsl(Number(part) + 0.5)}) return ${glsl(Math.max(count - 1, 2))};`)
           .join("\n        ")}
         return 2.0;
@@ -1008,8 +975,7 @@ export function applySkin(shader, palette = CHROMIS) {
       float fishBand = clamp(vFishUV.y, 0.0, 1.0);
       float fishHead = smoothstep(-0.008, 0.034, fishX - fishOpercleX(fishY));
       if (vFishPart < 0.5) {
-        // Countershading, in the chromis's key: an apple-green dorsum, a blue-green
-        // flank that mirrors the water, a paler green-white belly.
+        // Countershading: a darker dorsum, a flank that mirrors the water, a paler belly.
         vec3 skin = mix(${c3(p.dorsal)}, ${c3(p.dorsalLow)},
           smoothstep(0.02, 0.135, fishBand));
         skin = mix(skin, ${c3(p.flank)}, smoothstep(0.185, 0.42, fishBand));
@@ -1019,8 +985,7 @@ export function applySkin(shader, palette = CHROMIS) {
         skin = mix(skin, ${c3(p.bellyLow)},
           smoothstep(0.88, 1.0, fishBand) * bellyReach);
 
-        // The reflector: on a chromis the whole flank is the mirror, not one band, so the
-        // sheen is broad, strongest a little above the midline, and blue-green.
+        // The reflector: broad, strongest a little above the midline.
         float sheen = exp(-pow((fishBand - ${glsl(p.sheenBand)}) / ${glsl(p.sheenWidth)}, 2.0))
           * smoothstep(-0.285, -0.225, fishX)
           * (1.0 - smoothstep(0.188, 0.245, fishX));
@@ -1043,20 +1008,19 @@ export function applySkin(shader, palette = CHROMIS) {
         float rim = smoothstep(0.40, 0.50, length((fract(grid) - 0.5) * vec2(0.85, 1.0)));
         skin *= 1.0 + (fishHash(floor(grid)) - 0.5) * 0.06 * mask - rim * 0.035 * mask;
 
-        // The caudal peduncle goes a little yellower toward the tail, and the gill
-        // chamber shows faintly warm through thin opercular skin; there is no red on a
-        // chromis anywhere.
+        // The caudal peduncle goes a little warmer toward the tail, and the gill
+        // chamber shows faintly through thin opercular skin.
         float warm = (1.0 - smoothstep(-0.27, 0.0, fishX))
           * smoothstep(0.32, 0.60, fishBand) * (1.0 - smoothstep(0.88, 1.0, fishBand));
         skin = mix(skin, ${c3(p.peduncle)}, warm * ${glsl(p.peduncleStrength)});
         float sheath = 1.0 - smoothstep(-0.292, -0.240, fishX);
         skin = mix(skin, ${c3(p.sheath)}, sheath * 0.45);
-        float gill = exp(-pow((fishX - 0.178) / 0.026, 2.0)
+        float gill = exp(-pow((fishX - ${glsl(opercle.x - 0.01)}) / 0.026, 2.0)
           - pow((fishBand - 0.66) / 0.16, 2.0));
         skin = mix(skin, ${c3(p.gill)}, gill * 0.16);
 
-        // Head: the green runs unbroken over the skull; the cheek and opercle carry the
-        // same mirror as the flank, and the snout is a shade darker.
+        // Head: the cheek and opercle carry the same mirror as the flank, and the
+        // snout is a shade darker.
         vec3 cheek = mix(${c3(p.cheekDark)}, ${c3(p.cheekLight)},
           smoothstep(0.13, 0.40, fishBand));
         skin = mix(skin, cheek, fishHead * 0.92);
@@ -1072,9 +1036,9 @@ export function applySkin(shader, palette = CHROMIS) {
         skin *= 1.0 - 0.60 * exp(-pow(margin / 0.0028, 2.0)) * opercleFace;
         skin *= 1.0 + 0.28 * exp(-pow((margin - 0.008) / 0.005, 2.0)) * opercleFace;
 
-        // Mouth cleft, and the silver-gold ring of skin around the orbit.
+        // Mouth cleft, and the ring of skin around the orbit.
         float cleft = exp(-pow((fishY - fishCleftY(fishX)) / 0.0030, 2.0))
-          * smoothstep(0.304, 0.322, fishX);
+          * smoothstep(${glsl(mouth.cornerX - 0.018)}, ${glsl(mouth.cornerX)}, fishX);
         skin = mix(skin, vec3(0.040, 0.028, 0.024), cleft * 0.85);
         float orbit = fishOrbit();
         float ring = (1.0 - smoothstep(1.00, 1.18, orbit)) * smoothstep(0.88, 0.99, orbit);
@@ -1093,7 +1057,7 @@ export function applySkin(shader, palette = CHROMIS) {
           * (1.0 - fishAxialShadow(fishX, fishY));
         gFishThrough = fishThrough(path, vec3(0.0)) * wall
           + vec3(0.14, 0.11, 0.06) * gill;
-      } else if (vFishPart < 6.5 || vFishPart > 11.5) {
+      } else if (vFishPart < 6.5) {
         float caudal = 1.0 - step(1.5, vFishPart);
         float pectoral = step(3.5, vFishPart) * (1.0 - step(5.5, vFishPart));
         float paleTip = step(2.5, vFishPart) * (1.0 - step(3.5, vFishPart))
@@ -1105,9 +1069,9 @@ export function applySkin(shader, palette = CHROMIS) {
         // Membrane: nearly colourless, so the coral and water behind the fin show
         // through it.
         vec3 membrane = ${c3(p.membrane)};
-        // The body's green carries a little way into the fin bases, furthest through the
-        // two caudal lobes, and clears to hyaline over most of the fin. The pectorals
-        // stay almost clear.
+        // The body's colour carries a little way into the fin bases, furthest through
+        // the two caudal lobes, and clears over most of the fin. The pectorals stay
+        // almost clear.
         float lobe = 0.5 - 0.5 * cos(PI2 * 2.0 * along);
         float pigment = pow(1.0 - smoothstep(0.18, ${glsl(p.finReach)}, span), 0.8)
           * mix(1.0, 0.42 + 0.58 * lobe, caudal) * mix(1.0, 0.26, pectoral);
@@ -1146,7 +1110,7 @@ export function applySkin(shader, palette = CHROMIS) {
         float fibre = 0.5 + 0.5 * cos(vFishUV.x * PI2 * 24.0);
         vec3 iris = mix(${c3(p.iris)}, ${c3(p.irisDark)}, vFishUV.y);
         diffuseColor.rgb = iris * (0.92 + 0.08 * fibre)
-          * (0.48 + 0.52 * smoothstep(0.034, -0.016, fishY));
+          * (0.48 + 0.52 * smoothstep(${glsl(eye.y + 0.022)}, ${glsl(eye.y - 0.028)}, fishY));
       } else if (vFishPart < 8.5) {
         diffuseColor.rgb = vec3(0.0055, 0.0075, 0.0085);
       } else if (vFishPart < 9.5) {
@@ -1169,15 +1133,15 @@ export function applySkin(shader, palette = CHROMIS) {
         // Guanine sits under the scales and in the opercle and cheek plates. The
         // snout, jaws and skull roof carry none, so they stay dull dielectric.
         float scaled = fishReflector(fishBand, fishX)
-          * (1.0 - smoothstep(0.155, 0.205, fishX));
-        float plate = exp(-pow((fishX - 0.200) / 0.038, 2.0))
+          * (1.0 - smoothstep(${glsl(opercle.x - 0.03)}, ${glsl(opercle.x + 0.02)}, fishX));
+        float plate = exp(-pow((fishX - ${glsl(opercle.x + 0.015)}) / 0.038, 2.0))
           * smoothstep(0.22, 0.46, fishBand) * (1.0 - smoothstep(0.80, 0.96, fishBand));
         metalnessFactor = clamp(0.06 + 0.36 * max(scaled, plate), 0.0, 0.44);
         metalnessFactor *= smoothstep(-0.292, -0.248, fishX);
         metalnessFactor *= 1.0 - 0.85 * smoothstep(0.88, 1.06, fishOrbit());
       } else if (vFishPart > 6.5 && vFishPart < 7.5) {
         metalnessFactor = 0.20;
-      } else if (vFishPart < 6.5 || vFishPart > 11.5) {
+      } else if (vFishPart < 6.5) {
         metalnessFactor = 0.05;
       } else {
         metalnessFactor = 0.0;

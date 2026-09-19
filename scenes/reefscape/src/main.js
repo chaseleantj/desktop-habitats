@@ -6,7 +6,7 @@ import { createFishSchool } from './fish-model.js';
 import { createShrimp } from './shrimp.js';
 import { createParticles } from './particles.js';
 import { ReefSimulation, FIXED_STEP } from './simulation.js';
-import { waterTime, shaftGLSL, extinctionGLSL, shadowGLSL, LAMP } from './water.js';
+import { waterTime, extinctionGLSL, LAMP } from './water.js';
 
 const canvas=document.querySelector('#scene'),habitat=document.querySelector('#habitat'),loading=document.querySelector('#loading');
 const params=new URLSearchParams(location.search),isHost=document.documentElement.dataset.motion==='host';
@@ -44,8 +44,9 @@ async function start(){
   scene.add(sun,sun.target);
   const actinic=new THREE.DirectionalLight('#4f6dff',.78);actinic.position.set(3,12,-2);scene.add(actinic);
   const bounce=new THREE.DirectionalLight('#7f8fd0',.22);bounce.position.set(3,6,8);scene.add(bounce);
-  // The key light's shadow map, shared with everything that lights the water itself. The
-  // texture only exists once the first beauty pass has drawn it, so render() fills it in.
+  // The key light's shadow map, read by the motes so they go dark where the lamp is
+  // blocked. The texture only exists once the first beauty pass has drawn it, so render()
+  // fills it in.
   const shadow={reefShadowMap:{value:null},reefShadowMatrix:{value:sun.shadow.matrix}};
   const camera=new THREE.PerspectiveCamera(36,16/9,.08,140);
   const views={
@@ -69,14 +70,13 @@ async function start(){
   // The beauty pass lands in an HDR target; a short screen-space pass adds contact occlusion
   // where rock meets sand and coral meets rock, then a light vignette, before tone mapping.
   const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});target.depthTexture=new THREE.DepthTexture(1,1,THREE.UnsignedIntType);
-  const postScene=new THREE.Scene(),postCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),AO_SAMPLES=10,VOLUME_SAMPLES=28;
+  const postScene=new THREE.Scene(),postCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),AO_SAMPLES=10,VOLUME_SAMPLES=4;
   const post=new THREE.ShaderMaterial({uniforms:{beauty:{value:target.texture},depth:{value:target.depthTexture},size:{value:new THREE.Vector2()},nearFar:{value:new THREE.Vector2(camera.near,camera.far)},aoRadiusScale:{value:1},
-    eye:{value:new THREE.Vector3()},rayX:{value:new THREE.Vector3()},rayY:{value:new THREE.Vector3()},rayZ:{value:new THREE.Vector3()},volumeTime:{value:0},...shadow},depthTest:false,depthWrite:false,
+    eye:{value:new THREE.Vector3()},rayX:{value:new THREE.Vector3()},rayY:{value:new THREE.Vector3()},rayZ:{value:new THREE.Vector3()}},depthTest:false,depthWrite:false,
     vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
     fragmentShader:`uniform sampler2D beauty;uniform sampler2D depth;uniform vec2 size;uniform vec2 nearFar;uniform float aoRadiusScale;
-      uniform vec3 eye;uniform vec3 rayX;uniform vec3 rayY;uniform vec3 rayZ;uniform float volumeTime;varying vec2 vUv;
-      #include <packing>
-      ${shaftGLSL}${extinctionGLSL}${shadowGLSL}
+      uniform vec3 eye;uniform vec3 rayX;uniform vec3 rayY;uniform vec3 rayZ;varying vec2 vUv;
+      ${extinctionGLSL}
       float distanceAt(vec2 p){float z=texture2D(depth,p).x;return nearFar.x*nearFar.y/(nearFar.y-z*(nearFar.y-nearFar.x));}
       void main(){
         vec3 color=texture2D(beauty,vUv).rgb;float center=distanceAt(vUv);float occlusion=0.;
@@ -89,25 +89,20 @@ async function start(){
         // Light through water is a volume, not a backdrop: march the camera ray from the
         // front glass to the first surface and sum what the water scatters back along it,
         // each sample thinned by the water between it and the glass. The march stops at
-        // the depth buffer, so a shaft is cut off by the rock in front of it, and it reads
-        // the lamp's shadow map, so a shaft also ends under the rock above it: the water
-        // gains a front and a back instead of sitting on one plane, and the dark under the
-        // arch is dark all the way through.
+        // the depth buffer, so a near rock carries less of the glow than the open water
+        // beside it: the water gains a front and a back instead of sitting on one plane.
+        // The integrand is smooth along the ray, so a plain midpoint sum is free of bands
+        // and needs no dither.
         vec3 forward=normalize(rayZ);
         vec3 ray=normalize(rayZ+rayX*(vUv.x*2.-1.)+rayY*(vUv.y*2.-1.));
         float air=reefAirPath(eye,ray);
         float span=clamp(center/max(.05,dot(ray,forward))-air,0.,34.);
-        // A white-noise offset per pixel: a few dozen samples of a field with thin sheets
-        // in it show their step edges otherwise. Interleaved gradient noise hides them
-        // better in theory, but its lattice reads as a diagonal weave across open water;
-        // photographic grain is isotropic, and this is.
-        float dither=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453);
         vec3 glow=vec3(0.);
         for(int i=0;i<${VOLUME_SAMPLES};i++){
-          float s=span*(float(i)+dither)/${VOLUME_SAMPLES}.;vec3 p=eye+ray*(air+s);
-          // Skylight in the column, brighter toward the lamps, plus the shafts themselves.
+          float s=span*(float(i)+.5)/${VOLUME_SAMPLES}.;vec3 p=eye+ray*(air+s);
+          // Skylight in the column, brighter toward the lamps.
           float column=.08+.92*smoothstep(-2.5,9.,p.y);
-          glow+=(vec3(.0016,.0020,.0078)*column+vec3(.034,.037,.042)*reefShaft(p,volumeTime)*reefLit(p))*reefTransmittance(s);
+          glow+=vec3(.0016,.0020,.0078)*column*reefTransmittance(s);
         }
         color+=glow*span/${VOLUME_SAMPLES}.;
         float vignette=dot((vUv-.5)*vec2(1.,.85),(vUv-.5)*vec2(1.,.85));color*=1.-vignette*.16;
@@ -128,7 +123,7 @@ async function start(){
   const fishSchool=createFishSchool(scene,simulation);
   const shrimp=createShrimp(scene,simulation),particles=createParticles(scene,simulation,shadow);
   function sync(dt){
-    waterTime.value=simulation.time;post.uniforms.volumeTime.value=simulation.time;
+    waterTime.value=simulation.time;
     fishSchool.update();
     shrimp.update();particles.update(dt);
   }

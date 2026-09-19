@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { randomGenerator } from './math.js';
-import { currentAt, shaftGLSL, extinctionGLSL, shadowGLSL, waterTime } from './water.js';
+import { currentAt, extinctionGLSL, shadowGLSL } from './water.js';
 
 /** Suspended matter. Real tank water is never optically empty: there is always detritus
  *  and marine snow drifting in the circulation, and it is most of what tells the eye the
  *  water has a front and a back. A mote is sized and faded by its own distance, so the
- *  near ones read as soft close-up specks and the far ones as fine haze, and each one
- *  brightens as it drifts through a light shaft and goes dark in the rock's shadow. */
+ *  near ones read as soft close-up specks and the far ones as fine haze, and each one is
+ *  lit where the lamp reaches the water and goes dark in the rock's shadow. */
 export function createParticles(scene,simulation,shadow){
   const rng=randomGenerator(846),N=3400,pos=new Float32Array(N*3),vel=new THREE.Vector3(),point=new THREE.Vector3();
   // grain.x scales the mote, grain.y its brightness, grain.z how fast it sinks. A few
@@ -21,19 +21,19 @@ export function createParticles(scene,simulation,shadow){
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.BufferAttribute(pos,3).setUsage(THREE.DynamicDrawUsage));
   g.setAttribute('grain',new THREE.BufferAttribute(grain,3));
-  const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{pixelRatio:{value:1},reefTime:waterTime,...shadow},
-    vertexShader:`uniform float pixelRatio;uniform float reefTime;attribute vec3 grain;varying float fade;varying float disc;
+  const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{pixelRatio:{value:1},...shadow},
+    vertexShader:`uniform float pixelRatio;attribute vec3 grain;varying float fade;varying float disc;
       #include <packing>
-      ${shaftGLSL}${extinctionGLSL}${shadowGLSL}
+      ${extinctionGLSL}${shadowGLSL}
       void main(){
         vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;
         // A speck close to the lens is a soft disc the size of the lens's blur circle, not
         // a sharper point; the fragment fades the big ones so their light stays the same.
         disc=clamp(26.*grain.x/(-mv.z),1.1,16.);gl_PointSize=disc*pixelRatio;
-        // Lit by the same beams the water column is, dark where the rock shades the lamp,
-        // and thinned by the water in front of it. Outside a shaft a mote is barely there:
-        // the shafts are visible because of what floats in them, not the other way round.
-        fade=grain.y*(.09+.95*reefShaft(position,reefTime)*reefLit(position))*dot(reefTransmittance(reefWaterPath(position,cameraPosition)),vec3(.25,.35,.40));
+        // Lit wherever the lamp reaches the water, dark where the rock shades it, and
+        // thinned by the water in front of it. A light dusting, not snow: the motes are
+        // there to give the water a front and a back, not to be looked at.
+        fade=grain.y*(.09+.26*reefLit(position))*dot(reefTransmittance(reefWaterPath(position,cameraPosition)),vec3(.25,.35,.40));
       }`,
     fragmentShader:`varying float fade;varying float disc;
       void main(){float a=(1.-smoothstep(.08,.50,length(gl_PointCoord-.5)))*min(1.,4.5/disc);gl_FragColor=vec4(.80,.87,.92,a*fade);}`});

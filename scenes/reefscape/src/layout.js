@@ -27,10 +27,10 @@ export const HOST={x:-3.95,y:2.69,z:1.0,radius:1.15};
 // rock top there — the shrimp seat themselves off the baked surface, but a station buried
 // inside the rock would still send grazing fish to the wrong height.
 export const STATIONS=[{x:2.23,y:.57,z:2.22},{x:-5.15,y:.98,z:2.72}];
-// Coral envelopes fish steer around. The last four are the two gorgonian fans,
-// which stand well up into the swimming volume, and the arch lintel colonies.
+// Coral envelopes fish steer around. The last three are the gorgonian fan, which
+// stands well up into the swimming volume, and the arch lintel colonies.
 export const CORAL_BOUNDS=[[-6.0,4.35,-1.05,1.4,1.4,1.3],[6.0,4.2,-1.4,1.5,1.3,1.3],[4.4,3.1,-.2,1.65,.45,1.5],
-  [6.98,4.95,-.70,1.35,1.75,.60],[-7.45,4.15,-2.10,1.05,1.40,.55],[-.45,3.95,-1.14,.80,.70,.70],[1.34,4.20,-1.24,.70,.65,.65]];
+  [6.98,4.95,-.70,1.35,1.75,.60],[-.45,3.95,-1.14,.80,.70,.70],[1.34,4.20,-1.24,.70,.65,.65]];
 // The first two coral envelopes are the branching Acropora thickets, named here because
 // the open-water fish are bound to structures rather than to the open column: Chromis
 // viridis aggregates over a thicket and drops into its branches at an alarm, and every

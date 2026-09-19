@@ -1,6 +1,6 @@
 # Desktop Habitats
 
-![Riverscape running as a live macOS wallpaper, behind desktop icons and widgets](docs/images/riverscape-desktop.png)
+![Riverscape, a planted freshwater aquarium](docs/images/riverscape-wide.png)
 
 Have you always wanted an aquarium? Now you can have it, right on your desktop :)
 

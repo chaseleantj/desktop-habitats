@@ -1,20 +1,15 @@
 import * as THREE from 'three';
 import { underwater,responseGLSL } from './water.js';
-import { randomGenerator,smoothstep,clamp,lerp,noise } from './math.js';
+import { smoothstep,clamp,lerp,noise } from './math.js';
 import { merge } from './geometry.js';
 import { ANEMONES } from './layout.js';
 import { supportHeight } from './terrain.js';
+import { crownProfile, buildCrown, crownOrder, crownBudget } from './anemone-crown.js';
 
-// One anemone is a column standing on the rock with a crown of tentacles on the oral disc
-// at its top; every proportion below is a share of the animal's scale S, so the clownfish
-// host and a small colony elsewhere are the same animal at different sizes. The shape is
-// Remora's duskrose anemone taken into three dimensions: a rounded foot, a waist and a
-// flare to the rim; tentacles rooted on a golden-angle spiral over the disc, each a
-// tapering finger with a rounded, faintly swollen tip, leaving the disc a little off the
-// axis and arcing further outward along its length, so the inner rings stand and the
-// outer ring hangs over the rim. The crown's reach is roughly REACH·S, and a placement
-// in layout.js states that reach, so the scale follows from it.
-const REACH=.90,COLUMN_HEIGHT=.66,RIM=.36,ROOT_RADIUS=.24;
+// The finished host retains its broad, long-fingered crown. Small specimens use the
+// compact oral-disc layout in anemone-crown.js, with a wider disc, shorter column and
+// shorter tentacles. All bodies share a mesh; all tentacles share an instanced draw.
+const COLUMN_HEIGHT=.66,RIM=.36;
 // Column silhouette as [share of height, radius/S]: the pedal disc gripping the rock, a
 // waist, and the flare to the rim; cosine-blended so the rim rounds off and the waist is a
 // smooth throat rather than a kink. Below the rock the foot spreads on, hidden, so no
@@ -30,7 +25,7 @@ function columnRadius(u){
 // the centre stretched along the slit's axis.
 const discLift=v=>.045*smoothstep(0,.45,v);
 const mouthLift=e=>.030*Math.exp(-(((e-.20)/.08)**2))-.045*(1-smoothstep(0,.11,e));
-const GOLDEN=Math.PI*(3-Math.sqrt(5)),E=Math.E,hash=seed=>{const v=Math.sin(seed*E)*Math.cos(seed*Math.PI)*1e4;return v-Math.floor(v);};
+const E=Math.E,hash=seed=>{const v=Math.sin(seed*E)*Math.cos(seed*Math.PI)*1e4;return v-Math.floor(v);};
 // Verrucae: the adhesive warts a column carries, a staggered lattice crowding toward the
 // rim with a share of its sites left bare, read as a pale mottle and a slight relief.
 const VERRUCAE={rows:12,cols:20,skip:.22,jitter:.9,topBias:.55,size:.020};
@@ -49,17 +44,17 @@ const FOOT=new THREE.Color('#7a2c24'),SHAFT=new THREE.Color('#c04a2c'),LIP=new T
 // Each placement becomes one column-and-disc surface of revolution about its own axis,
 // standing on the rock; the disc's dome carries the tentacle roots.
 function specimen(spec,index){
-  const S=spec.radius/REACH,H=COLUMN_HEIGHT*S,up=new THREE.Vector3(0,1,0),axis=new THREE.Vector3();
+  const crown=buildCrown(spec,index),{S,rim,compact}=crown,H=crown.height*S,up=new THREE.Vector3(0,1,0),axis=new THREE.Vector3();
   // The axis leans a little with the rock it stands on and by whatever the placement asks
   // for; the disc's position is authored, the column drops from it to wherever the rock is.
   const step=.25,lean=spec.lean||[0,0],slopeX=(supportHeight(spec.x+step,spec.z)-supportHeight(spec.x-step,spec.z))/(2*step),slopeZ=(supportHeight(spec.x,spec.z+step)-supportHeight(spec.x,spec.z-step))/(2*step);
   axis.set(-slopeX*.35+lean[0],1,-slopeZ*.35+lean[1]).normalize();
-  const frame=new THREE.Quaternion().setFromUnitVectors(up,axis),disc=new THREE.Vector3(spec.x,spec.y,spec.z);
+  const frame=new THREE.Quaternion().setFromUnitVectors(up,axis),disc=new THREE.Vector3(spec.x,spec.y-(compact?.12*S:0),spec.z);
   const foot=disc.clone().addScaledVector(axis,-H),sunk=Math.max(.12*S,foot.y-supportHeight(foot.x,foot.z)+.04);
-  return {S,H,frame,foot,sunk,seed:index*977,count:tentacleCount(spec)};
+  return {S,H,rim,compact,crown,frame,foot,sunk,seed:index*977,count:crown.count};
 }
 function bodyGeometry(sp){
-  const {S,H,frame,foot,sunk,seed}=sp,rings=56,segments=72,pos=[],col=[],idx=[],point=new THREE.Vector3(),color=new THREE.Color(),FOLD=.68;
+  const {S,H,rim,frame,foot,sunk,seed}=sp,rings=56,segments=72,pos=[],col=[],idx=[],point=new THREE.Vector3(),color=new THREE.Color(),FOLD=.68;
   for(let j=0;j<=rings;j++){const t=j/rings;
     for(let i=0;i<=segments;i++){const a=i/segments*Math.PI*2;
       let r,y,shade=1;
@@ -68,13 +63,13 @@ function bodyGeometry(sp){
         const u=lerp(-sunk/H,1,t/FOLD),wart=verruca(a,u,seed),edge=1+.012*noise(Math.cos(a)*3+seed,u*4,Math.sin(a)*3);
         // Longitudinal striation: the mesenterial insertions show through the body wall as
         // shallow grooves that fade below the rim.
-        const groove=Math.pow(.5+.5*Math.cos(a*14+seed),1.5)*(1-smoothstep(.70,.92,u)),base=columnRadius(u);
+        const groove=Math.pow(.5+.5*Math.cos(a*14+seed),1.5)*(1-smoothstep(.70,.92,u)),base=columnRadius(u)*(1+(rim/RIM-1)*smoothstep(.35,1,u));
         r=S*base*edge*(1-.012*groove)*(1+.8*VERRUCAE.size*wart/base);y=H*u;
         color.copy(FOOT).lerp(SHAFT,smoothstep(.05,.55,u)).lerp(LIP,smoothstep(.55,1,u)).lerp(WART,Math.min(1,wart*.55));
         // The crown shades the top of the column and the grooves lie in their own shadow.
         shade=(1-.42*smoothstep(.72,1,u))*(1-.30*groove);
       }else{
-        const v=(t-FOLD)/(1-FOLD),e=(1-v)*(1+.30*Math.cos(2*a+seed));r=S*RIM*(1-v);y=H+S*(discLift(v)+mouthLift(e));
+        const v=(t-FOLD)/(1-FOLD),e=(1-v)*(1+.30*Math.cos(2*a+seed));r=S*rim*(1-v);y=H+S*(discLift(v)+mouthLift(e));
         // Mesenterial lines radiate from the mouth across the disc, which sits in the crown's shade.
         color.copy(DISC).lerp(LIPS,Math.exp(-(((e-.20)/.10)**2))).lerp(MOUTH,1-smoothstep(.04,.13,e));
         shade=.45*(1-.14*smoothstep(.55,1,Math.cos(a*24))*smoothstep(.15,.4,v)*(1-smoothstep(.7,.9,v)));
@@ -99,16 +94,12 @@ function tentacleGeometry(){
   const hub=pos.length/3;pos.push(0,0,0);for(let i=0;i<sides;i++)idx.push(hub,i,i+1);
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setIndex(idx);geo.computeVertexNormals();return geo;
 }
-// A small anemone has fewer tentacles than a large one, but not in proportion to its
-// disc's area (about 170 on the host, 30 on the smallest clone), and for its size they are
-// shorter and stouter: a clone is a stubby-fingered version of the host, not a miniature.
-const tentacleCount=spec=>Math.round(110*Math.pow(spec.radius/REACH,1.3));
-const girthOf=S=>.036*Math.pow(S,.70),lengthOf=S=>.48*Math.pow(S,1.15);
-export const TENTACLE_COUNT=ANEMONES.reduce((n,spec)=>n+tentacleCount(spec),0);
+// Every specimen has its own density budget; the host retains its previous shape.
+export const TENTACLE_COUNT=ANEMONES.reduce((n,spec)=>n+crownProfile(spec).count,0);
 export function createAnemone(scene){
   // Built after the terrain, so the columns stand on the baked rock rather than its analytic stand-in.
-  const specimens=ANEMONES.map(specimen),rng=randomGenerator(8945);
-  const vertex=`attribute vec4 aShape;attribute vec4 aCurve;varying float vAxis;varying float vAround;varying float vTone;varying float vRing;varying float vSeed;${responseGLSL}
+  const specimens=ANEMONES.map(specimen);
+  const vertex=`attribute vec4 aShape;attribute vec4 aCurve;attribute float aFlex;varying float vAxis;varying float vAround;varying float vTone;varying float vRing;varying float vSeed;${responseGLSL}
     // The resting strand is a circular arc in the local x-y plane (x outward from the disc,
     // y the anemone's axis): it leaves the disc aCurve.x from the axis and turns a further
     // aCurve.y by the tip, so a small curl is a straight finger and a large one hooks over
@@ -118,17 +109,16 @@ export function createAnemone(scene){
     vec2 tSway;vec2 tTip;
     void tentacleSolve(){vec3 root=instanceMatrix[3].xyz;mat3 toLocal=transpose(mat3(instanceMatrix));
       vec2 f=reefResponse(root,reefTime,.45+aShape.x*.60+aCurve.z*.50),g=reefResponse(root,reefTime,1.3+aShape.x*.80);
-      float gain=.90*aShape.x;
+      float gain=.90*aShape.x*aFlex;
       tSway=(toLocal*vec3(f.x,0.,f.y)).xz*gain;tTip=(toLocal*vec3(g.x,0.,g.y)).xz*gain*.5;}
     vec3 arcPoint(float s){float c=max(aCurve.y,.02),t=aCurve.x+c*s;return vec3(cos(aCurve.x)-cos(t),sin(t)-sin(aCurve.x),.05*s*sin(s*5.5+aCurve.w*25.)*c)*aShape.x/c;}
-    vec3 arcTangent(float s){float t=aCurve.x+aCurve.y*s;return normalize(vec3(sin(t),cos(t),.05*(sin(s*5.5+aCurve.w*25.)+5.5*s*cos(s*5.5+aCurve.w*25.))));}
-    vec3 tentacleCenter(float s){vec2 h=tSway*s*s+tTip*s*s*s*s;return arcPoint(s)+vec3(h.x,0.,h.y)-arcTangent(s)*(.5*dot(h,h)/aShape.x);}
-    vec3 tentacleSlope(float s){vec2 dh=tSway*2.*s+tTip*4.*s*s*s;return arcTangent(s)*aShape.x+vec3(dh.x,0.,dh.y);}`;
+    vec3 tentacleCenter(float s){vec2 h=tSway*s*s+tTip*s*s*s*s;return arcPoint(s)+vec3(h.x,0.,h.y);}
+    vec3 tentacleSlope(float s){vec2 dh=tSway*2.*s+tTip*4.*s*s*s;float t=aCurve.x+aCurve.y*s;float z=.05*(sin(s*5.5+aCurve.w*25.)+5.5*s*cos(s*5.5+aCurve.w*25.));return vec3(sin(t),cos(t),z)*aShape.x+vec3(dh.x,0.,dh.y);}`;
   const mat=underwater(new THREE.MeshStandardMaterial({color:'#ffffff',roughness:.52,metalness:0}),{
     key:'tank-anemone',vertex,
     // Tissue a few cells thick: the base passes a little light, the tip most of it.
     transmission:'(.20+.40*smoothstep(.20,1.,vAxis))',
-    normal:`tentacleSolve();vec3 slope=normalize(tentacleSlope(position.y));vec3 tx=normalize(vec3(slope.y,-slope.x,0.));vec3 tz=normalize(cross(tx,slope));objectNormal=normalize(tx*normal.x+slope*normal.y+tz*normal.z);`,
+    normal:`tentacleSolve();vec3 slope=normalize(tentacleSlope(position.y));vec3 tx=normalize(vec3(slope.y,-slope.x,0.));vec3 tz=normalize(cross(tx,slope));objectNormal=normalize((tx*normal.x+tz*normal.z)/aShape.y+slope*normal.y/length(tentacleSlope(position.y)));`,
     begin:`float s=position.y;vec3 dir=normalize(tentacleSlope(s));vec3 ax=normalize(vec3(dir.y,-dir.x,0.));vec3 az=normalize(cross(ax,dir));
       transformed=tentacleCenter(s)+(ax*position.x+az*position.z)*aShape.y;
       vAxis=s;vAround=atan(position.z,position.x);vTone=aShape.z;vRing=aShape.w;vSeed=aCurve.w;`,
@@ -152,31 +142,35 @@ export function createAnemone(scene){
       float buried=(1.-smoothstep(.22,.82,vAxis))*(1.-.60*vRing*vRing);
       diffuseColor.rgb=mix(tissue,vec3(.14,.035,.01),buried*.78);`
   });
-  const tentacles=new THREE.InstancedMesh(tentacleGeometry(),mat,TENTACLE_COUNT),shapes=new Float32Array(TENTACLE_COUNT*4),curves=new Float32Array(TENTACLE_COUNT*4);
+  const tentacles=new THREE.InstancedMesh(tentacleGeometry(),mat,TENTACLE_COUNT);
+  const shapes=new Float32Array(TENTACLE_COUNT*4),curves=new Float32Array(TENTACLE_COUNT*4),flex=new Float32Array(TENTACLE_COUNT);
   const matrix=new THREE.Matrix4(),rotation=new THREE.Matrix4(),X=new THREE.Vector3(),Y=new THREE.Vector3(),Z=new THREE.Vector3(),root=new THREE.Vector3();
-  const all=[];
-  for(const sp of specimens){const {S,H,frame,foot,count}=sp;
-    for(let i=0;i<count;i++){
-      // Stratified radius and the golden angle: even coverage of the annulus round the
-      // bare mouth with no clumps and no gaps, from the index alone.
-      const rr=Math.sqrt(ROOT_RADIUS*ROOT_RADIUS+(1-ROOT_RADIUS*ROOT_RADIUS)*(i+.5)/count),ring=(rr-ROOT_RADIUS)/(1-ROOT_RADIUS);
-      const a=i*GOLDEN+(rng()-.5)*.44,rootRadius=clamp(rr+(rng()-.5)*.10,ROOT_RADIUS*.9,1);
-      X.set(Math.cos(a),0,Math.sin(a));Y.set(0,1,0);Z.crossVectors(X,Y);
-      root.set(X.x*rootRadius*RIM*S,H+S*discLift(1-rootRadius)-.006*S,X.z*rootRadius*RIM*S).applyQuaternion(frame).add(foot);
+  const crowns=[];
+  for(const sp of specimens){const {S,H,rim,frame,foot,crown}=sp,instances=[];
+    for(const t of crown.roots){
+      X.set(Math.cos(t.angle),0,Math.sin(t.angle));Y.set(0,1,0);Z.crossVectors(X,Y);
+      root.set(X.x*t.radius*rim*S,H+S*discLift(1-t.radius)-.006*S,X.z*t.radius*rim*S).applyQuaternion(frame).add(foot);
       rotation.makeBasis(X,Y,Z);matrix.makeRotationFromQuaternion(frame).multiply(rotation).setPosition(root);
-      // Rim tentacles are longer and leave the disc at a greater lean; every strand turns
-      // further outward along its length by its own amount, unevenly across the crown.
-      const len=lengthOf(S)*(.88+.50*ring)*(.86+.28*rng()),girth=girthOf(S)*(.85+.30*rng()),tilt=.25+.75*Math.pow(ring,1.2),curl=(.20+.80*rng())*(.60+.75*ring);
-      all.push({matrix:matrix.clone(),shape:[len,girth,rng(),ring],curve:[tilt,curl,rng(),rng()]});
+      instances.push({matrix:matrix.clone(),shape:[t.length,t.girth,t.tone,t.ring],curve:[t.tilt,t.curl,t.lag,t.seed],flex:t.flex});
     }
+    crowns.push({crown,instances,order:crownOrder(crown.roots)});
   }
-  // 317 is coprime with the count, so a lowered instance count still draws a spread of
-  // rings and of anemones instead of one crown's inner tentacles.
-  const stride=[317,313,311,307].find(p=>TENTACLE_COUNT%p)||1;
-  for(let i=0;i<TENTACLE_COUNT;i++){const t=all[(i*stride)%TENTACLE_COUNT];tentacles.setMatrixAt(i,t.matrix);shapes.set(t.shape,i*4);curves.set(t.curve,i*4);}
-  tentacles.geometry.setAttribute('aShape',new THREE.InstancedBufferAttribute(shapes,4));tentacles.geometry.setAttribute('aCurve',new THREE.InstancedBufferAttribute(curves,4));
+  const shapeAttribute=new THREE.InstancedBufferAttribute(shapes,4),curveAttribute=new THREE.InstancedBufferAttribute(curves,4),flexAttribute=new THREE.InstancedBufferAttribute(flex,1);
+  tentacles.geometry.setAttribute('aShape',shapeAttribute);tentacles.geometry.setAttribute('aCurve',curveAttribute);tentacles.geometry.setAttribute('aFlex',flexAttribute);
+  let lastQuality=null;
+  function setQuality(quality){
+    if(quality===lastQuality)return;lastQuality=quality;let count=0;
+    for(const {crown,instances,order} of crowns){
+      const budget=crownBudget(crown,quality);
+      for(let i=0;i<budget;i++){
+        const t=instances[order[i]];tentacles.setMatrixAt(count,t.matrix);shapes.set(t.shape,count*4);curves.set(t.curve,count*4);flex[count]=t.flex;count++;
+      }
+    }
+    tentacles.count=count;tentacles.instanceMatrix.needsUpdate=true;shapeAttribute.needsUpdate=true;curveAttribute.needsUpdate=true;flexAttribute.needsUpdate=true;
+  }
+  setQuality('detail');
   tentacles.frustumCulled=false;tentacles.receiveShadow=true;scene.add(tentacles);
   const body=new THREE.Mesh(merge(specimens.map(bodyGeometry)),underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.44}),{key:'anemone-body',transmission:.10}));
   body.castShadow=body.receiveShadow=true;scene.add(body);
-  return {tentacles,count:TENTACLE_COUNT};
+  return {tentacles,count:TENTACLE_COUNT,setQuality};
 }

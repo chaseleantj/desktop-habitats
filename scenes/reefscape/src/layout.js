@@ -27,16 +27,14 @@ export const ROCKS=[
 // goals, their shelter point and the non-host avoidance all key off these. lean tips the
 // axis (x and z, as a share of its height) so the disc faces the viewer a little.
 export const HOST={x:-3.95,y:3.72,z:1.0,radius:1.25,lean:[.10,.30]};
-// Every anemone in the tank, the host first; anemone.js builds them all as one animal at
-// different sizes. The clones sit low, inside the wide frame, on rock that carries nothing
-// else, so the host's form repeats down the scape instead of standing as a one-off, and
-// each leans its own way, the ones toward the viewer showing their discs. y is the disc's
-// height over the rock there.
+// The host comes first. Small specimens use an explicit compact crown, not a shrunken
+// host. They sit low on free rock, with independent leans. y is the authored disc height;
+// the compact form settles its disc a little lower to sit into the rock shoulder.
 export const ANEMONES=[HOST,
-  {x:5.50,y:1.24,z:2.00,radius:.70,lean:[.15,.80]},
-  {x:4.80,y:1.10,z:2.50,radius:.42,lean:[-.30,.50]},
-  {x:-2.35,y:1.02,z:2.25,radius:.40,lean:[.20,.50]},
-  {x:-2.45,y:1.30,z:1.75,radius:.26,lean:[0,.60]}];
+  {x:5.50,y:1.24,z:2.00,radius:.70,form:'compact',lean:[.15,.80]},
+  {x:4.80,y:1.10,z:2.50,radius:.42,form:'compact',lean:[-.30,.50]},
+  {x:-2.35,y:1.02,z:2.25,radius:.40,form:'compact',lean:[.20,.50]},
+  {x:-2.45,y:1.30,z:1.75,radius:.26,form:'compact',lean:[0,.60]}];
 // Both stations are flat rock shoulders the cleaner shrimp advertise from. Their y is the
 // rock top there — the shrimp seat themselves off the baked surface, but a station buried
 // inside the rock would still send grazing fish to the wrong height.
@@ -45,10 +43,7 @@ export const STATIONS=[{x:2.23,y:.57,z:2.22},{x:-5.15,y:.98,z:2.72}];
 // stands well up into the swimming volume, and the arch lintel colonies.
 export const CORAL_BOUNDS=[[-6.0,4.35,-1.05,1.4,1.4,1.3],[6.0,4.2,-1.4,1.5,1.3,1.3],[4.4,3.1,-.2,1.65,.45,1.5],
   [6.98,4.95,-.70,1.35,1.75,.60],[-.45,3.95,-1.14,.80,.70,.70],[1.34,4.20,-1.24,.70,.65,.65]];
-// The first two coral envelopes are the branching Acropora thickets, named here because
-// the open-water fish are bound to structures rather than to the open column: Chromis
-// viridis aggregates over a thicket and drops into its branches at an alarm, and every
-// Pseudanthias swarm is permanently attached to one rock or coral head. The arch lintel
-// is the only promontory this tank has, so it is the anthias' rock.
+// Named refuges for an alarm, not constraints on ordinary reef-wide roaming. The arch
+// lintel is the anthias' refuge; the two Acropora crowns shelter the chromis pods.
 export const THICKETS=CORAL_BOUNDS.slice(0,2).map(([x,y,z,,ry])=>({x,y,z,top:y+ry}));
 export const PROMONTORY={x:.38,y:3.70,z:-1.22};

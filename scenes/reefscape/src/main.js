@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createTerrain, createBackdrop } from './terrain.js';
 import { createCorals } from './corals.js';
-import { createAnemone, TENTACLE_COUNT } from './anemone.js';
+import { createAnemone } from './anemone.js';
 import { createFishSchool } from './fish-model.js';
 import { createShrimp } from './shrimp.js';
 import { createParticles } from './particles.js';
@@ -172,7 +172,7 @@ async function start(){
   changePower=()=>{resize();restart();};
   function resize(draw=true){
     const width=Math.max(1,habitat.clientWidth),height=Math.max(1,habitat.clientHeight),preset=presets[quality];
-    anemone.tentacles.count=Math.round(TENTACLE_COUNT*(quality==='eco'?.57:quality==='detail'?1:.70));
+    anemone.setQuality(quality);
     ratio=Math.min(devicePixelRatio||1,preset.dpr,Math.sqrt(preset.pixels/(width*height)))*autoScale*(onBattery?.90:1);
     const w=Math.max(1,Math.round(width*ratio)),h=Math.max(1,Math.round(height*ratio));renderer.setSize(w,h,false);target.setSize(w,h);post.uniforms.size.value.set(w,h);post.uniforms.aoRadiusScale.value=h/972;
     camera.aspect=width/height;

@@ -322,8 +322,8 @@ function fishMaterial(kind) {
       #define fishGait aFishGait
       // The propulsive wave grows toward the tail, and a turn bends the whole body the same
       // way: a fish turns as a C, not as a rigid arrow swung about its middle.
-      float fishFlex(float x) {float q=clamp((.30-x)/1.14,0.,1.);return (sin(fishTrim.x+q*3.7)*fishTrim.y+fishGait.z)*q*q;}
-      float fishSlope(float x){float q=clamp((.30-x)/1.14,0.,1.);return -(2.*q*(fishTrim.y*sin(fishTrim.x+q*3.7)+fishGait.z)+3.7*q*q*fishTrim.y*cos(fishTrim.x+q*3.7))/1.14;}`,
+      float fishFlex(float x) {float q=clamp((.30-x)/1.14,0.,1.);return (sin(fishTrim.x-q*3.7)*fishTrim.y+fishGait.z)*q*q;}
+      float fishSlope(float x){float q=clamp((.30-x)/1.14,0.,1.);return -(2.*q*(fishTrim.y*sin(fishTrim.x-q*3.7)+fishGait.z)-3.7*q*q*fishTrim.y*cos(fishTrim.x-q*3.7))/1.14;}`,
     normal:`objectNormal=normalize(vec3(normal.x-fishSlope(position.x)*normal.z,normal.y,normal.z));`,
     begin:`vPart=part;vAnatomy=position;vSkinUv=uv;vTrim=fishTrim.zw;
       transformed.z+=fishFlex(position.x);
@@ -427,14 +427,14 @@ export function createFishSchool(scene,simulation){
     const largest=Math.max(...fish.map(f=>f.size));
     groups.push({fish,data,attribute,gait,gaitAttribute,mesh,trim:fish.map((f,i)=>[kind==='clown'?f.size/largest:(i*.6180339887+.31)%1,(kind==='anthias'||kind==='chromis')&&f.rank===0?1:0])});
   }
-  const dummy=new THREE.Object3D(),euler=new THREE.Euler(0,0,0,'YXZ');
+  const dummy=new THREE.Object3D(),euler=new THREE.Euler(0,0,0,'YZX');
   return {update(){
     for(const group of groups){
       for(let i=0;i<group.fish.length;i++){
         const f=group.fish[i];dummy.position.copy(f.position);dummy.scale.setScalar(f.size);euler.set(f.roll,f.yaw,f.pitch);dummy.quaternion.setFromEuler(euler);dummy.updateMatrix();group.mesh.setMatrixAt(i,dummy.matrix);
-        // Tail excursion is a fraction of body length once the fish is beating, whatever
-        // the speed; a glide straightens it to a trace.
-        group.data.set([f.phase,.022+.128*f.wave,...group.trim[i]],i*4);
+        // The simulation owns effort and amplitude. No hidden idle oscillation here;
+        // a coast is straight. The travelling wave runs from the head toward the tail.
+        group.data.set([f.phase,f.tailAmplitude,...group.trim[i]],i*4);
         group.gait.set([f.pectoral,f.rowing,f.bend,0],i*4);
       }
       group.attribute.needsUpdate=true;group.gaitAttribute.needsUpdate=true;group.mesh.instanceMatrix.needsUpdate=true;

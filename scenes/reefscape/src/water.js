@@ -6,10 +6,9 @@ export const SURFACE=TANK.surface;
 // The lamp bank hangs over the tank, a little toward the front-left, so its light comes
 // down nearly vertical: an overhang shades what is under it and the arch's passage is
 // dark, which a lamp leaning in from the camera side can never show. The key light, its
-// shadow map, the glitter the surface draws on the bed and the shafts through the water
-// all take this one direction: a shaft, the shadow it ends in and the caustic line at its
-// foot then lean the same way, which is what stops the light reading as three unrelated
-// patterns pasted onto one scene.
+// shadow map and the glitter the surface draws on the bed all take this one direction, so
+// a shadow and the caustic line at its foot lean the same way, which is what stops the
+// light reading as two unrelated patterns pasted onto one scene.
 export const LAMP=(()=>{const l=Math.hypot(-2.2,13,2.0);return {x:-2.2/l,y:13/l,z:2.0/l};})();
 // Surface ripples, at the actual aquarium depth (10 cm/unit), not ocean swell.
 // omega² = g k tanh(kh). Pump circulation below is a separate forced flow.
@@ -24,24 +23,12 @@ export const WAVES=[
   {a:.0017,k:6.9,angle:.92,phase:2.4},
   {a:.0009,k:9.6,angle:-1.15,phase:.55},
 ].map(w=>({...w,dx:Math.cos(w.angle),dz:Math.sin(w.angle),omega:Math.sqrt(g*w.k*Math.tanh(w.k*h))}));
-// The set keeps its dispersion-correct shape but the glitter runs at a third of real time.
-// At full speed a 30 cm ripple sweeps its cells across the bed at 70 cm/s, the flicker of a
-// tank with a wavemaker on, and a viewer sitting in front of a wallpaper for hours is the
-// one person that flicker is guaranteed to tire; a calm tank's glitter breathes at 1–2 Hz.
-const RIPPLE_TIME=.33;
-// The shafts are drawn by a different surface from the glitter. Capillary ripples run at
-// half a metre a second and flicker the bed at a few hertz, but the rays a viewer sees
-// through the water hang where the fixture put them: they are the standing heave the
-// return flow leaves on the surface, and only their edges wander, at a few millimetres a
-// second. These are written for that creep rather than for the dispersion relation, so
-// their phase speed is chosen, not solved, and their wavelengths are short enough (7 to
-// 25 cm) that the folds they draw are thin sheets rather than broad bands.
-const SWELL=[
-  {a:.048,k:2.6,angle:.35,speed:.030,phase:.9},
-  {a:.023,k:3.8,angle:1.85,speed:.024,phase:2.2},
-  {a:.011,k:5.4,angle:-.75,speed:.034,phase:.4},
-  {a:.0055,k:7.6,angle:2.60,speed:.028,phase:1.6},
-].map(w=>({...w,dx:Math.cos(w.angle),dz:Math.sin(w.angle),omega:w.speed*w.k}));
+// The set keeps its dispersion-correct shape but the glitter runs at a fifteenth of real
+// time. At full speed a 30 cm ripple sweeps its cells across the bed at 70 cm/s, the
+// flicker of a tank with a wavemaker on, and a third of that still read as far too fast on
+// the running scene. The rate is tuned to how the glitter reads on a wallpaper watched for
+// hours, not to any physical rate: the cells should drift over the coral, not flicker.
+const RIPPLE_TIME=.066;
 const n=x=>Number(x).toFixed(7);
 // Two opposed circulation pumps. Slow alternating strength and a recirculating
 // return path approximate wavemaker flow; no claim of solving Navier–Stokes.
@@ -77,27 +64,12 @@ vec2 reefResponse(vec3 p,float t,float tau){
 // Where the lamp's ray through p crossed the surface, and the curvature of a wave set
 // there. The Hessian of the surface is what a ripple does to a bundle of rays: where its
 // determinant with the lens arm falls to zero the bundle has folded onto itself, and that
-// fold is the bright line, on the bed as glitter and in the water as a shaft.
+// fold is the bright glitter line on the bed.
 const lens=(waves,arm)=>`
   float hxx=0.,hzz=0.,hxz=0.;
   ${waves.map(w=>`{float curvature=-${n(w.a*w.k*w.k)}*sin(${n(w.k)}*dot(q,vec2(${n(w.dx)},${n(w.dz)}))-${n(w.omega)}*t+${n(w.phase)});hxx+=curvature*${n(w.dx*w.dx)};hzz+=curvature*${n(w.dz*w.dz)};hxz+=curvature*${n(w.dx*w.dz)};}`).join('\n')}
   float determinant=(1.-${arm}*hxx)*(1.-${arm}*hzz)-${arm}*${arm}*hxz*hxz;`;
 const surfaceCrossing=`float depth=clamp(${n(h)}-p.y,.02,9.);vec2 q=p.xz+depth*vec2(${n(LAMP.x/LAMP.y)},${n(LAMP.z/LAMP.y)});`;
-// Light through the water column at p: how far the slow swell has squeezed the bundle of
-// lamp rays that passes there, traced back up the lamp's own direction to the surface, so
-// a shaft stands along the same line its shadow does. The determinant is the bundle's
-// cross-section, so its reciprocal is the concentration: a band brightens as the rays
-// converge and peaks at the fold. Sharpest just under the surface, blurred deeper down
-// where the water has scattered it, and dimmer away from the bank over the left islands.
-export const shaftGLSL=`
-float reefShaft(vec3 p,float t){
-  ${surfaceCrossing}
-  ${lens(SWELL,'(1.8+depth*.28)')}
-  float deep=smoothstep(0.,8.5,depth),concentration=1./max(abs(determinant),.08);
-  float ray=smoothstep(mix(2.8,2.0,deep),mix(10.,6.,deep),concentration);
-  float bank=.42+.58*exp(-pow((q.x+1.2)/7.5,2.));
-  return ray*bank*exp(-depth*.20)*smoothstep(-1.5,1.5,p.y);
-}`;
 export const causticGLSL=`
 vec3 reefIrradiance(vec3 p,float t){
   ${surfaceCrossing}
@@ -123,9 +95,9 @@ export const extinctionGLSL=`
 float reefAirPath(vec3 eye,vec3 ray){return eye.z>${n(TANK.front)}?(eye.z-${n(TANK.front)})/max(-ray.z,.05):0.;}
 float reefWaterPath(vec3 p,vec3 eye){vec3 ray=p-eye;float d=length(ray);return max(0.,d-reefAirPath(eye,ray/max(d,1e-5)));}
 vec3 reefTransmittance(float path){return exp(-vec3(${ABSORB.map(n).join(',')})*path);}`;
-// The key light's own shadow map, read by whatever adds light to the water: a shaft
-// stops under the arch because the lamp does, and a mote in the arch's shadow stays
-// dark. The map is three's RGBA-packed depth, so <packing> must precede this.
+// The key light's own shadow map, read by whatever lights the water itself: a mote in
+// the arch's shadow stays dark because the lamp never reached it. The map is three's
+// RGBA-packed depth, so <packing> must precede this.
 export const shadowGLSL=`uniform sampler2D reefShadowMap;uniform mat4 reefShadowMatrix;
 float reefLit(vec3 p){vec4 c=reefShadowMatrix*vec4(p,1.);c.xyz/=c.w;
   if(c.x<0.||c.x>1.||c.y<0.||c.y>1.||c.z>1.)return 1.;

@@ -6,7 +6,7 @@ import { createFishSchool } from './fish-model.js';
 import { createShrimp } from './shrimp.js';
 import { createParticles } from './particles.js';
 import { ReefSimulation, FIXED_STEP } from './simulation.js';
-import { waterTime, shaftGLSL } from './water.js';
+import { waterTime, shaftGLSL, extinctionGLSL, shadowGLSL, LAMP } from './water.js';
 
 const canvas=document.querySelector('#scene'),habitat=document.querySelector('#habitat'),loading=document.querySelector('#loading');
 const params=new URLSearchParams(location.search),isHost=document.documentElement.dataset.motion==='host';
@@ -30,12 +30,23 @@ function reportError(error){console.error(error);loading.hidden=true;const box=d
 
 async function start(){
   const renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:false,powerPreference:'low-power',preserveDrawingBuffer:false});
-  renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
+  renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.info.autoReset=false;
   const scene=new THREE.Scene();scene.background=new THREE.Color('#04101d');
-  // Display water is clear, but a faint blue veil still builds along the viewing ray, so the
-  // back wall and rear corals sit behind the foreground instead of on the same plane.
-  scene.fog=new THREE.FogExp2('#102b47',.027);
+  // Reef LEDs: a cool white key with a violet actinic wash from above. Warm tones come only
+  // from the animals and coral tissue themselves. The ground half of the hemisphere stands
+  // in for the bounce off the bright aragonite bed, so the shaded side of a coral branch
+  // reads as tissue in shadow rather than a black stick. The sky half is the water column
+  // itself, deep indigo, and kept low: what the lamp does not reach stays dark.
+  scene.add(new THREE.HemisphereLight('#5a63c8','#4d4736',.46));
+  const sun=new THREE.DirectionalLight('#f6f0e0',3.9);sun.position.set(LAMP.x,LAMP.y,LAMP.z).multiplyScalar(14.2);sun.target.position.set(0,0,0);sun.castShadow=true;
+  sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-12,right:12,top:10,bottom:-9,near:1,far:43});sun.shadow.bias=-.0007;sun.shadow.normalBias=.018;sun.shadow.radius=2;sun.shadow.intensity=.86;
+  scene.add(sun,sun.target);
+  const actinic=new THREE.DirectionalLight('#4f6dff',.78);actinic.position.set(3,12,-2);scene.add(actinic);
+  const bounce=new THREE.DirectionalLight('#7f8fd0',.22);bounce.position.set(3,6,8);scene.add(bounce);
+  // The key light's shadow map, shared with everything that lights the water itself. The
+  // texture only exists once the first beauty pass has drawn it, so render() fills it in.
+  const shadow={reefShadowMap:{value:null},reefShadowMatrix:{value:sun.shadow.matrix}};
   const camera=new THREE.PerspectiveCamera(36,16/9,.08,140);
   const views={
     wide:{position:[0,4.3,18.2],target:[0,3.35,0],fov:25.8},
@@ -58,13 +69,14 @@ async function start(){
   // The beauty pass lands in an HDR target; a short screen-space pass adds contact occlusion
   // where rock meets sand and coral meets rock, then a light vignette, before tone mapping.
   const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});target.depthTexture=new THREE.DepthTexture(1,1,THREE.UnsignedIntType);
-  const postScene=new THREE.Scene(),postCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),AO_SAMPLES=10,VOLUME_SAMPLES=6;
+  const postScene=new THREE.Scene(),postCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),AO_SAMPLES=10,VOLUME_SAMPLES=28;
   const post=new THREE.ShaderMaterial({uniforms:{beauty:{value:target.texture},depth:{value:target.depthTexture},size:{value:new THREE.Vector2()},nearFar:{value:new THREE.Vector2(camera.near,camera.far)},aoRadiusScale:{value:1},
-    eye:{value:new THREE.Vector3()},rayX:{value:new THREE.Vector3()},rayY:{value:new THREE.Vector3()},rayZ:{value:new THREE.Vector3()},volumeTime:{value:0}},depthTest:false,depthWrite:false,
+    eye:{value:new THREE.Vector3()},rayX:{value:new THREE.Vector3()},rayY:{value:new THREE.Vector3()},rayZ:{value:new THREE.Vector3()},volumeTime:{value:0},...shadow},depthTest:false,depthWrite:false,
     vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
     fragmentShader:`uniform sampler2D beauty;uniform sampler2D depth;uniform vec2 size;uniform vec2 nearFar;uniform float aoRadiusScale;
       uniform vec3 eye;uniform vec3 rayX;uniform vec3 rayY;uniform vec3 rayZ;uniform float volumeTime;varying vec2 vUv;
-      ${shaftGLSL}
+      #include <packing>
+      ${shaftGLSL}${extinctionGLSL}${shadowGLSL}
       float distanceAt(vec2 p){float z=texture2D(depth,p).x;return nearFar.x*nearFar.y/(nearFar.y-z*(nearFar.y-nearFar.x));}
       void main(){
         vec3 color=texture2D(beauty,vUv).rgb;float center=distanceAt(vUv);float occlusion=0.;
@@ -74,21 +86,30 @@ async function start(){
           occlusion+=smoothstep(.012,.13,difference)*(1.-smoothstep(.2,.8,difference));
         }
         color*=1.-occlusion*${(.042*12/AO_SAMPLES).toFixed(8)};
-        // Light through water is a volume, not a backdrop: march the camera ray as far as
-        // the depth buffer allows and sum the LED beams it crosses. Because the march stops
-        // at the first surface, a shaft is cut off by the rock in front of it and the water
-        // gains a front and a back instead of sitting on one plane.
+        // Light through water is a volume, not a backdrop: march the camera ray from the
+        // front glass to the first surface and sum what the water scatters back along it,
+        // each sample thinned by the water between it and the glass. The march stops at
+        // the depth buffer, so a shaft is cut off by the rock in front of it, and it reads
+        // the lamp's shadow map, so a shaft also ends under the rock above it: the water
+        // gains a front and a back instead of sitting on one plane, and the dark under the
+        // arch is dark all the way through.
         vec3 forward=normalize(rayZ);
         vec3 ray=normalize(rayZ+rayX*(vUv.x*2.-1.)+rayY*(vUv.y*2.-1.));
-        float span=min(center/max(.05,dot(ray,forward)),34.);
-        // Interleaved gradient noise, not a hash of uv: six samples of a smooth field show
-        // their step edges otherwise, and this dithers them into grain the eye ignores.
-        float dither=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))));
-        float beams=0.;
+        float air=reefAirPath(eye,ray);
+        float span=clamp(center/max(.05,dot(ray,forward))-air,0.,34.);
+        // A white-noise offset per pixel: a few dozen samples of a field with thin sheets
+        // in it show their step edges otherwise. Interleaved gradient noise hides them
+        // better in theory, but its lattice reads as a diagonal weave across open water;
+        // photographic grain is isotropic, and this is.
+        float dither=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453);
+        vec3 glow=vec3(0.);
         for(int i=0;i<${VOLUME_SAMPLES};i++){
-          beams+=reefShaft(eye+ray*(span*(float(i)+dither)/${VOLUME_SAMPLES}.),volumeTime);
+          float s=span*(float(i)+dither)/${VOLUME_SAMPLES}.;vec3 p=eye+ray*(air+s);
+          // Skylight in the column, brighter toward the lamps, plus the shafts themselves.
+          float column=.08+.92*smoothstep(-2.5,9.,p.y);
+          glow+=(vec3(.0016,.0020,.0078)*column+vec3(.034,.037,.042)*reefShaft(p,volumeTime)*reefLit(p))*reefTransmittance(s);
         }
-        color+=vec3(.0036,.0080,.0122)*beams*span/${VOLUME_SAMPLES}.;
+        color+=glow*span/${VOLUME_SAMPLES}.;
         float vignette=dot((vUv-.5)*vec2(1.,.85),(vUv-.5)*vec2(1.,.85));color*=1.-vignette*.16;
         gl_FragColor=vec4(color,1.);
         #include <tonemapping_fragment>
@@ -96,26 +117,16 @@ async function start(){
       }`});
   postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),post));
   applyView(view);
-  // Reef LEDs: a cool white key with a violet actinic wash from above. Warm tones come only
-  // from the animals and coral tissue themselves. The ground half of the hemisphere stands
-  // in for the bounce off the bright aragonite bed, so the shaded side of a coral branch
-  // reads as tissue in shadow rather than a black stick.
-  scene.add(new THREE.HemisphereLight('#8ca6de','#564f3c',.60));
-  const sun=new THREE.DirectionalLight('#f6f0e0',3.35);sun.position.set(-3.5,13,4.5);sun.target.position.set(0,0,0);sun.castShadow=true;
-  sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-12,right:12,top:10,bottom:-9,near:1,far:43});sun.shadow.bias=-.0007;sun.shadow.normalBias=.018;sun.shadow.radius=2;sun.shadow.intensity=.80;
-  scene.add(sun,sun.target);
-  const actinic=new THREE.DirectionalLight('#4f7dff',.72);actinic.position.set(3,12,-2);scene.add(actinic);
-  const bounce=new THREE.DirectionalLight('#8fa4d8',.28);bounce.position.set(3,6,8);scene.add(bounce);
   const envData=new Uint8Array(128*64*4);
   for(let y=0;y<64;y++)for(let x=0;x<128;x++){
     const top=1-y/63,glow=Math.exp(-(((top-.86)/.13)**2));const i=(y*128+x)*4;
-    envData[i]=6+glow*185;envData[i+1]=12+glow*210;envData[i+2]=26+glow*229;envData[i+3]=255;
+    envData[i]=5+glow*186;envData[i+1]=7+glow*208;envData[i+2]=24+glow*231;envData[i+3]=255;
   }
-  const environment=new THREE.DataTexture(envData,128,64);environment.mapping=THREE.EquirectangularReflectionMapping;environment.colorSpace=THREE.SRGBColorSpace;environment.needsUpdate=true;scene.environment=environment;scene.environmentIntensity=.38;
+  const environment=new THREE.DataTexture(envData,128,64);environment.mapping=THREE.EquirectangularReflectionMapping;environment.colorSpace=THREE.SRGBColorSpace;environment.needsUpdate=true;scene.environment=environment;scene.environmentIntensity=.30;
   createBackdrop(scene);await createTerrain(scene);await createCorals(scene);const anemone=createAnemone(scene);
   const simulation=new ReefSimulation();
   const fishSchool=createFishSchool(scene,simulation);
-  const shrimp=createShrimp(scene,simulation),particles=createParticles(scene,simulation);
+  const shrimp=createShrimp(scene,simulation),particles=createParticles(scene,simulation,shadow);
   function sync(dt){
     waterTime.value=simulation.time;post.uniforms.volumeTime.value=simulation.time;
     fishSchool.update();
@@ -134,7 +145,7 @@ async function start(){
   }
   function render(){
     if(contextLost||disposed||document.hidden)return;
-    renderer.info.reset();renderer.setRenderTarget(target);renderer.render(scene,camera);renderer.setRenderTarget(null);renderer.render(postScene,postCamera);frames++;
+    renderer.info.reset();renderer.setRenderTarget(target);renderer.render(scene,camera);shadow.reefShadowMap.value=sun.shadow.map.texture;renderer.setRenderTarget(null);renderer.render(postScene,postCamera);frames++;
     if(!loading.hidden)loading.hidden=true;
   }
   function frame(now){

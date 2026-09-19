@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { merge, ellipsoid, tint } from './geometry.js';
 import { randomGenerator, groundHeight } from './math.js';
-import { underwater, causticGLSL, waterTime } from './water.js';
+import { underwater, causticGLSL, extinctionGLSL, waterTime } from './water.js';
 import { ROCKS, HOST, STATIONS, TANK } from './layout.js';
 export {ROCKS,HOST,STATIONS};
 let surfaceField=null,surfaceW=0,surfaceH=0;
@@ -37,16 +37,14 @@ export async function createTerrain(scene){
   const sandMat=underwater(new THREE.MeshStandardMaterial({color:'#eee9d9',roughness:.84,map:sandMap,normalMap:sandNormal,normalScale:new THREE.Vector2(1.9,1.9)}),{key:'tank-sand',vertex:'attribute float shade;varying float vShade;',begin:'vShade=shade;',fragment:'varying float vShade;',
     map:`vec3 reefGrain=texture2D(map,vMapUv).rgb;vec3 reefDrift=texture2D(map,vMapUv*.11+vec2(.37,.11)).rgb;`,
     color:`float grain=dot(reefGrain,vec3(.299,.587,.114)),drift=dot(reefDrift,vec3(.299,.587,.114));
-      diffuseColor.rgb=vec3(.880,.845,.758)*(.34+1.30*grain)*(.78+.52*drift)*vShade;`});
+      diffuseColor.rgb=vec3(.880,.845,.758)*(.27+1.02*grain)*(.78+.52*drift)*vShade;`});
   // The bed runs past every frame edge, like the riverscape's, so no rim or wall is ever seen.
   const ground=new THREE.PlaneGeometry(30,14,180,84);ground.rotateX(-Math.PI/2);ground.translate(0,0,1.0);const p=ground.attributes.position,shade=new Float32Array(p.count);
   // Sand darkens where it meets the rock: a baked contact shadow from each rock footprint,
   // so the hardscape sits in the bed instead of floating on a lit sheet.
   for(let i=0;i<p.count;i++){const x=p.getX(i),z=p.getZ(i);p.setY(i,groundHeight(x,z)+.014*Math.sin(x*7.8+z*2.3));
     let contact=0;for(const r of ROCKS){const d=Math.max(0,Math.hypot((x-r[0])/r[3],(z-r[2])/r[5])-1)*Math.min(r[3],r[5]);contact=Math.max(contact,Math.exp(-d*d/(.55*r[4])));}
-    // Less of the lamp reaches the back of the tank, and there is more water in the way,
-    // so the bed falls off toward the wall instead of meeting it along a bright horizon.
-    shade[i]=(1-.62*contact)*(.40+.60*(z<-1?Math.max(0,(z+5.2)/4.2)**1.4:1));}
+    shade[i]=1-.62*contact;}
   ground.setAttribute('shade',new THREE.BufferAttribute(shade,1));ground.computeVertexNormals();const sand=new THREE.Mesh(ground,sandMat);sand.receiveShadow=true;scene.add(sand);
   // Tri-planar photogrammetry detail over actual porous limestone geometry. The
   // color stream includes coralline patches and precomputed crevice occlusion.
@@ -93,39 +91,36 @@ export async function createTerrain(scene){
   const rubbleMesh=new THREE.Mesh(merge(rubble),underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),{key:'rubble'}));rubbleMesh.receiveShadow=true;scene.add(rubbleMesh);
   return {obstacles:ROCKS,host:HOST,stations:STATIONS};
 }
-/** The tank's back wall, seen from inside the water: deep blue at the sand, brightening
- *  toward the lamps. Nothing of the enclosure itself (glass, rim, pumps) is modelled.
- *  A flat ramp is what makes a tank read as a painted backdrop, so the wall carries the
- *  same ripple the bed does, the bars of the LED array above it, and a slow large-scale
- *  mottle — all of it moving, none of it resolvable as a pattern. */
+/** The tank's back wall, seen from inside the water: deep indigo at the sand, lifting a
+ *  little toward the lamps, and seen through the whole depth of the tank, so it takes the
+ *  same veil every rear rock does. Nothing of the enclosure itself (glass, rim, pumps) is
+ *  modelled. A flat ramp is what makes a tank read as a painted backdrop, so the wall
+ *  carries the same ripple the bed does, the bars of the LED array above it, and a slow
+ *  large-scale mottle — all of it moving, none of it resolvable as a pattern. */
 export function createBackdrop(scene){
-  const backMat=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{reefTime:{value:0}}]),fog:true,
+  const backMat=new THREE.ShaderMaterial({uniforms:{reefTime:{value:0}},
     vertexShader:`varying vec3 p;
-      #include <fog_pars_vertex>
-      void main(){p=position;vec4 mvPosition=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mvPosition;
-      #include <fog_vertex>
-      }`,
+      void main(){p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
     fragmentShader:`varying vec3 p;uniform float reefTime;
-      #include <fog_pars_fragment>
-      ${causticGLSL}
+      ${causticGLSL}${extinctionGLSL}
       void main(){
         float top=smoothstep(-3.5,9.5,p.y);
         float wash=.55+.45*(exp(-pow((p.x+3.6)/6.,2.))+exp(-pow((p.x-4.4)/5.5,2.)));
-        vec3 col=mix(vec3(.038,.080,.138),vec3(.022,.066,.150)*wash,top);
-        col+=vec3(.030,.052,.070)*exp(-pow((p.y+.35)/1.5,2.));
+        vec3 col=mix(vec3(.006,.009,.034),vec3(.010,.020,.082)*wash,top);
+        col+=vec3(.006,.010,.024)*exp(-pow((p.y+.35)/1.5,2.));
         // The ripple that draws glitter on the bed also plays across the wall, softened by
         // the water it has crossed to get there.
         float ripple=reefIrradiance(vec3(p.x,p.y,-4.1),reefTime).g-.86;
-        col+=vec3(.020,.042,.060)*clamp(ripple,-.5,1.1)*smoothstep(-1.,5.,p.y);
+        col+=vec3(.006,.012,.028)*clamp(ripple,-.5,1.1)*smoothstep(-1.,5.,p.y);
         // The LED array reads on the wall as soft vertical bars that drift, not as a ramp.
         float bars=sin(p.x*.62+.5*sin(p.y*.21+reefTime*.045))*sin(p.x*.23-reefTime*.031+1.4);
-        col+=vec3(.006,.013,.021)*max(0.,bars)*smoothstep(-.5,7.,p.y);
+        col+=vec3(.003,.005,.011)*max(0.,bars)*smoothstep(-.5,7.,p.y);
         // Slow blotching so the gradient is never mathematically smooth.
         col*=.93+.14*sin(p.x*.37+1.9*sin(p.y*.29+reefTime*.021))*sin(p.y*.24-reefTime*.017);
+        col*=reefTransmittance(reefWaterPath(p,cameraPosition));
         gl_FragColor=vec4(col,1.);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
-        #include <fog_fragment>
       }`});
   const backGeo=new THREE.PlaneGeometry(44,24);backGeo.translate(0,7,TANK.back-.05);
   const wall=new THREE.Mesh(backGeo,backMat);

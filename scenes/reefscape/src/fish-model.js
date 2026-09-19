@@ -306,28 +306,33 @@ const EYE={
  *  this material; what differs between them travels in the per-instance aFishTrim:
  *  x tail phase, y beat amplitude, z a per-animal shade — relative body size on the
  *  clownfish, where the black borders broaden with age — and w the sexed-up individual,
- *  the terminal male anthias or the chromis holding the nest. */
+ *  the terminal male anthias or the chromis holding the nest. aFishGait carries the
+ *  rest of the animal's motion: x the pectoral phase, y how hard the pectorals row, z the
+ *  body's bend into a turn. */
 function fishMaterial(kind) {
   const e=eyeSeat(kind),[rows,files]=SPECIES[kind].scales,[hinge,margin]=SPECIES[kind].veil;
-  // percula rows with its pectorals hard enough to drive the whole fish at 2.4–4.6 Hz and
-  // only folds them in for a caudal burst; the two open-water species use theirs to trim
-  // and hover, so their stroke is smaller and slower than the tail that carries them.
-  const stroke=kind==='clown'?[2.6,.050,.034]:kind==='chromis'?[3.6,.024,.010]:[2.2,.030,.014];
+  // percula rows with its pectorals hard enough to drive the whole fish and only folds
+  // them in for a caudal burst; the two open-water species use theirs to trim and hover,
+  // so their stroke is smaller than the tail that carries them.
+  const stroke=kind==='clown'?[.050,.034]:kind==='chromis'?[.024,.010]:[.030,.014];
   return underwater(new THREE.MeshStandardMaterial({roughness:.38,metalness:.02,side:THREE.DoubleSide,transparent:true,forceSinglePass:true}),{
     key:`fish-${kind}`,transmission:.085,
-    vertex:`attribute float part;attribute vec4 aFishTrim;varying float vPart;varying vec3 vAnatomy;varying vec2 vSkinUv;varying vec2 vTrim;
+    vertex:`attribute float part;attribute vec4 aFishTrim;attribute vec4 aFishGait;varying float vPart;varying vec3 vAnatomy;varying vec2 vSkinUv;varying vec2 vTrim;
       #define fishTrim aFishTrim
-      float fishFlex(float x) {float q=clamp((.30-x)/1.14,0.,1.);return sin(fishTrim.x+q*3.7)*q*q*fishTrim.y;}
-      float fishSlope(float x){float q=clamp((.30-x)/1.14,0.,1.);return -fishTrim.y/1.14*(2.*q*sin(fishTrim.x+q*3.7)+3.7*q*q*cos(fishTrim.x+q*3.7));}`,
+      #define fishGait aFishGait
+      // The propulsive wave grows toward the tail, and a turn bends the whole body the same
+      // way: a fish turns as a C, not as a rigid arrow swung about its middle.
+      float fishFlex(float x) {float q=clamp((.30-x)/1.14,0.,1.);return (sin(fishTrim.x+q*3.7)*fishTrim.y+fishGait.z)*q*q;}
+      float fishSlope(float x){float q=clamp((.30-x)/1.14,0.,1.);return -(2.*q*(fishTrim.y*sin(fishTrim.x+q*3.7)+fishGait.z)+3.7*q*q*fishTrim.y*cos(fishTrim.x+q*3.7))/1.14;}`,
     normal:`objectNormal=normalize(vec3(normal.x-fishSlope(position.x)*normal.z,normal.y,normal.z));`,
     begin:`vPart=part;vAnatomy=position;vSkinUv=uv;vTrim=fishTrim.zw;
       transformed.z+=fishFlex(position.x);
       // A pectoral rows through an abduction–adduction cycle rather than flapping: the
       // blade sweeps out and then back along the flank, so the stroke has a fore-aft part.
       if(part>1.5&&part<3.5){
-        float hinge=clamp((.30-position.x)*3.4,0.,1.),row=sin(fishTrim.x*${n(stroke[0])});
-        transformed.z+=sign(position.z)*row*hinge*${n(stroke[1])};
-        transformed.x-=row*hinge*hinge*${n(stroke[2])};
+        float hinge=clamp((.30-position.x)*3.4,0.,1.),row=sin(fishGait.x)*fishGait.y;
+        transformed.z+=sign(position.z)*row*hinge*${n(stroke[0])};
+        transformed.x-=row*hinge*hinge*${n(stroke[1])};
       }
       ${kind==='anthias'?`// Both sexes carry the lyre and a prolonged third dorsal spine; on the terminal
       // male the caudal lobes are drawn into filaments and that spine greatly elongated.
@@ -405,30 +410,34 @@ function fishMaterial(kind) {
 }
 
 /** A draw call per species rather than per animal. The same anatomical geometry
- *  and muscle-wave shader are used, with per-instance phase/effort and transform.
+ *  and muscle-wave shader are used, with per-instance phase, gait and transform.
  */
 export function createFishSchool(scene,simulation){
   const groups=[];
   for(const kind of ['clown','chromis','anthias']){
     const fish=simulation.fish.filter(f=>f.kind===kind),geometry=makeFishGeometry(kind);
     const data=new Float32Array(fish.length*4),attribute=new THREE.InstancedBufferAttribute(data,4).setUsage(THREE.DynamicDrawUsage);
-    geometry.setAttribute('aFishTrim',attribute);
+    const gait=new Float32Array(fish.length*4),gaitAttribute=new THREE.InstancedBufferAttribute(gait,4).setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('aFishTrim',attribute);geometry.setAttribute('aFishGait',gaitAttribute);
     const mesh=new THREE.InstancedMesh(geometry,fishMaterial(kind),fish.length);mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);scene.add(mesh); // tiny fixed population, shader-deformed bounds
     // Trim z shades each animal a little differently — for the clownfish it instead
     // carries relative size, because percula's black borders broaden with age and the
     // biggest fish on an anemone is the blackest. Trim w marks the sexed-up individual:
     // the terminal male anthias, and the chromis holding the nest.
     const largest=Math.max(...fish.map(f=>f.size));
-    groups.push({fish,data,attribute,mesh,trim:fish.map((f,i)=>[kind==='clown'?f.size/largest:(i*.6180339887+.31)%1,(kind==='anthias'||kind==='chromis')&&f.rank===0?1:0])});
+    groups.push({fish,data,attribute,gait,gaitAttribute,mesh,trim:fish.map((f,i)=>[kind==='clown'?f.size/largest:(i*.6180339887+.31)%1,(kind==='anthias'||kind==='chromis')&&f.rank===0?1:0])});
   }
   const dummy=new THREE.Object3D(),euler=new THREE.Euler(0,0,0,'YXZ');
   return {update(){
     for(const group of groups){
       for(let i=0;i<group.fish.length;i++){
         const f=group.fish[i];dummy.position.copy(f.position);dummy.scale.setScalar(f.size);euler.set(f.roll,f.yaw,f.pitch);dummy.quaternion.setFromEuler(euler);dummy.updateMatrix();group.mesh.setMatrixAt(i,dummy.matrix);
-        group.data.set([f.phase,.035+Math.min(.115,f.lastSpeed*.095+f.effort*.025),...group.trim[i]],i*4);
+        // Tail excursion is a fraction of body length once the fish is beating, whatever
+        // the speed; a glide straightens it to a trace.
+        group.data.set([f.phase,.022+.128*f.wave,...group.trim[i]],i*4);
+        group.gait.set([f.pectoral,f.rowing,f.bend,0],i*4);
       }
-      group.attribute.needsUpdate=true;group.mesh.instanceMatrix.needsUpdate=true;
+      group.attribute.needsUpdate=true;group.gaitAttribute.needsUpdate=true;group.mesh.instanceMatrix.needsUpdate=true;
     }
   },groups};
 }

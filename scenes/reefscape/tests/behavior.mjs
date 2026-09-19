@@ -19,22 +19,33 @@ const goldies=sim.fish.filter(f=>f.kind==='anthias');
 const male=goldies.find(f=>!f.rank),hens=goldies.filter(f=>f.rank);
 assert.ok(male.size/(hens.reduce((s,f)=>s+f.size,0)/hens.length)>1.35,'Terminal male must outsize the harem');
 let maxHome=0,nearThicket=0,chromisSamples=0,maleBelow=0,samples=0,cleaned=0,displayed=0,henDisplayed=0,upcurrent=0;
+let shrimpRange=0,shrimpWalked=0,advertising=0;
+const shrimpWas=sim.shrimp.map(s=>s.position.clone());
 for(let i=0;i<60*180;i++){
   if(i===60*10||i===60*32)sim.feed(-1.5,1.3);
   sim.step(FIXED_STEP);
   for(const f of sim.fish){if(f.state==='clean')cleaned++;if(f.state==='display')f.rank?henDisplayed++:displayed++;}
+  // A cleaner shrimp is a station animal: it must work its own shoulder rather than set off
+  // across the tank, and every channel the vertex shaders read has to stay finite.
+  sim.shrimp.forEach((s,i)=>{
+    shrimpRange=Math.max(shrimpRange,Math.hypot(s.position.x-s.home.x,s.position.z-s.home.z));
+    shrimpWalked+=Math.hypot(s.position.x-shrimpWas[i].x,s.position.z-shrimpWas[i].z);shrimpWas[i].copy(s.position);
+    assert.ok([s.position.x,s.position.y,s.position.z,s.yaw,s.step,s.walk,s.pick,s.sway,s.signal,s.flick,s.reach,s.curl,s.rhythm].every(Number.isFinite),'Shrimp state finite');
+  });
+  advertising+=sim.shrimp.some(s=>s.state==='advertise')?1:0;
   if(i%60===0){
     assert.ok(sim.diagnostics().finite);
     for(const f of sim.fish){
       assert.ok(f.velocity.length()<1.701);
       if(f.kind==='clown')maxHome=Math.max(maxHome,Math.hypot(f.position.x-HOST.x,f.position.y-HOST.y,f.position.z-HOST.z));
       // A chromis lives over an Acropora colony. It may cross to the other one — that is
-      // how a pod splits and fuses — but it must not spend its life touring the open tank.
+      // how a pod splits and fuses — and it leaves for a turn round the open water and
+      // comes back, but a pod that spends its life touring the tank has lost its coral.
       if(f.kind==='chromis'){chromisSamples++;nearThicket+=THICKETS.some(c=>Math.hypot(f.position.x-c.x,f.position.z-c.z)<4.0)?1:0;}
     }
-    // Only while the harem is actually holding station: a scare, the male's own U-swim and
-    // a pinch of food all break the layering, and are meant to.
-    if(sim.food.every(p=>!p.active)&&goldies.every(f=>f.alarm<=0&&f.display<=0&&f.hold<=0)){maleBelow+=male.position.y<hens.reduce((s,f)=>s+f.position.y,0)/hens.length?1:0;samples++;}
+    // Only while the harem is actually holding station: a scare, the male's own U-swim, a
+    // pinch of food, a tour and a wanderer all break the layering, and are meant to.
+    if(sim.food.every(p=>!p.active)&&sim.shoals[2].legs===0&&goldies.every(f=>f.alarm<=0&&f.display<=0&&f.hold<=0&&f.state!=='roam')){maleBelow+=male.position.y<hens.reduce((s,f)=>s+f.position.y,0)/hens.length?1:0;samples++;}
     const shoal=sim.shoals[2],flow=currentAt(shoal.home,sim.time,V());
     if(Math.abs(flow.x)>.15)upcurrent+=Math.sign(shoal.centre.x-shoal.home.x)===-Math.sign(flow.x)?1:0;
   }
@@ -43,8 +54,20 @@ for(let i=0;i<60*180;i++){
 // ranging above him. Reversing this is an easy accident and an obvious error to a keeper.
 assert.ok(maleBelow/samples>.92,`Terminal male sat below the harem ${maleBelow}/${samples} of the time`);
 assert.ok(maxHome<2.6,`Clownfish host radius ${maxHome}`);
-assert.ok(nearThicket/chromisSamples>.90,`Chromis over a coral head ${nearThicket}/${chromisSamples} of the time`);
+assert.ok(nearThicket/chromisSamples>.72,`Chromis over a coral head ${nearThicket}/${chromisSamples} of the time`);
+// A fish swims where it points. Its velocity through the water must lie along its heading
+// whenever it is under way; a body sliding sideways to its goal is the tell of a tracker.
+let aligned=0,moving=0;const flow=V(),rel=V(),head=V();
+for(let i=0;i<60*20;i++){sim.step(FIXED_STEP);for(const f of sim.fish){currentAt(f.position,sim.time,flow);rel.copy(f.velocity).sub(flow);if(rel.length()<.2)continue;head.set(Math.cos(f.yaw)*Math.cos(f.pitch),Math.sin(f.pitch),-Math.sin(f.yaw)*Math.cos(f.pitch));moving++;if(head.dot(rel)/rel.length()>.94)aligned++;}}
+assert.ok(aligned/moving>.85,`Fish swim along their heading ${aligned}/${moving} of the time`);
+// And it does not beat its tail without going anywhere: a bout must be followed by a
+// glide, so no species beats more than half the time or glides all of it.
+for(const kind of ['chromis','anthias']){const of=sim.fish.filter(f=>f.kind===kind);let beats=0,n=0;for(let i=0;i<60*30;i++){sim.step(FIXED_STEP);for(const f of of){n++;if(f.beat)beats++;}}assert.ok(beats/n>.12&&beats/n<.55,`${kind} bout fraction ${(beats/n).toFixed(2)}`);}
 assert.ok(cleaned>0,'Fish must visit the cleaner shrimp');
+// Stop-and-go over its own patch: it has to cover real ground in three minutes and still
+// never leave the shoulder, and it has to be advertising often enough for a fish to come.
+assert.ok(shrimpWalked>3&&shrimpRange<.60,`Shrimp walked ${shrimpWalked.toFixed(2)} u, straying ${shrimpRange.toFixed(2)} u from its station`);
+assert.ok(advertising/(60*180)>.5,`A shrimp was advertising only ${(100*advertising/(60*180)).toFixed(0)}% of the time`);
 assert.ok(displayed>0&&henDisplayed===0,`U-swim is male-only: male ${displayed}, females ${henDisplayed}`);
 assert.ok(upcurrent>0,'The anthias must hold up-current of their promontory');
 assert.ok(sim.consumed>0,'Fish must actually consume food');

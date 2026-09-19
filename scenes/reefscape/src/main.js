@@ -51,10 +51,13 @@ async function start(){
   const camera=new THREE.PerspectiveCamera(36,16/9,.08,140);
   const views={
     wide:{position:[0,4.3,18.2],target:[0,3.35,0],fov:25.8},
-    anemone:{position:[-1.5,4.7,10.5],target:[-3.7,3.40,1.1],fov:34},
+    anemone:{position:[-1.5,4.9,10.5],target:[-3.85,3.80,1.0],fov:34},
     shrimp:{position:[4.5,2.1,7.6],target:[2.45,.75,2.2],fov:30},
     fish:{position:[-1.0,5.2,8.6],target:[-1.6,5.2,-.4],fov:19},
   };
+  // Capture mode may bring its own camera, for judging a detail no named view frames:
+  // ?view=custom&camera=x,y,z,tx,ty,tz,fov
+  if(capture&&params.has('camera')){const c=params.get('camera').split(',').map(Number);if(c.length>=6&&c.every(Number.isFinite))views.custom={position:c.slice(0,3),target:c.slice(3,6),fov:c[6]||30};}
   let view=params.get('view')||'wide';if(!views[view])view='wide';
   const postRight=new THREE.Vector3(),postUp=new THREE.Vector3(),postForward=new THREE.Vector3();
   // Declared here, but only ever called once the post material below exists.
@@ -169,7 +172,7 @@ async function start(){
   changePower=()=>{resize();restart();};
   function resize(draw=true){
     const width=Math.max(1,habitat.clientWidth),height=Math.max(1,habitat.clientHeight),preset=presets[quality];
-    anemone.tentacles.count=quality==='eco'?250:quality==='detail'?TENTACLE_COUNT:310;
+    anemone.tentacles.count=Math.round(TENTACLE_COUNT*(quality==='eco'?.57:quality==='detail'?1:.70));
     ratio=Math.min(devicePixelRatio||1,preset.dpr,Math.sqrt(preset.pixels/(width*height)))*autoScale*(onBattery?.90:1);
     const w=Math.max(1,Math.round(width*ratio)),h=Math.max(1,Math.round(height*ratio));renderer.setSize(w,h,false);target.setSize(w,h);post.uniforms.size.value.set(w,h);post.uniforms.aoRadiusScale.value=h/972;
     camera.aspect=width/height;

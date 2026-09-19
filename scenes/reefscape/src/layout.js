@@ -22,7 +22,21 @@ export const ROCKS=[
   [-.55,2.62,-1.20,1.65,.78,1.00],
   [1.25,2.98,-1.28,1.50,.72,.92],
 ];
-export const HOST={x:-3.95,y:2.69,z:1.0,radius:1.15};
+// The clownfish host, on the left island's front shoulder. x, y, z is its oral disc — the
+// column runs from there down to the rock — and radius the crown's reach; the clownfish
+// goals, their shelter point and the non-host avoidance all key off these. lean tips the
+// axis (x and z, as a share of its height) so the disc faces the viewer a little.
+export const HOST={x:-3.95,y:3.72,z:1.0,radius:1.25,lean:[.10,.30]};
+// Every anemone in the tank, the host first; anemone.js builds them all as one animal at
+// different sizes. The clones sit low, inside the wide frame, on rock that carries nothing
+// else, so the host's form repeats down the scape instead of standing as a one-off, and
+// each leans its own way, the ones toward the viewer showing their discs. y is the disc's
+// height over the rock there.
+export const ANEMONES=[HOST,
+  {x:5.50,y:1.24,z:2.00,radius:.70,lean:[.15,.80]},
+  {x:4.80,y:1.10,z:2.50,radius:.42,lean:[-.30,.50]},
+  {x:-2.35,y:1.02,z:2.25,radius:.40,lean:[.20,.50]},
+  {x:-2.45,y:1.30,z:1.75,radius:.26,lean:[0,.60]}];
 // Both stations are flat rock shoulders the cleaner shrimp advertise from. Their y is the
 // rock top there — the shrimp seat themselves off the baked surface, but a station buried
 // inside the rock would still send grazing fish to the wrong height.

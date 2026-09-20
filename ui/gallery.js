@@ -4,7 +4,11 @@ const status = document.querySelector('#gallery-status');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const names = portals.map(portal => portal.querySelector('h2').firstChild.textContent);
 const DRAG_THRESHOLD = 10;
-const WHEEL_IDLE_MS = 160;
+const WHEEL_IDLE_MS = 120;
+const SNAP_DURATION_MS = 180;
+const INTENT_DISTANCE = 0.18;
+const VELOCITY_WINDOW_MS = 100;
+const PROJECTION_MS = 140;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const wrap = value => ((value % portals.length) + portals.length) % portals.length;
 const nearest = value => Math.sign(value) * Math.round(Math.abs(value));
@@ -40,9 +44,29 @@ function announce() {
   status.textContent = names[selected];
   if (restoreFocus) portals[selected].focus({ preventScroll: true });
 }
+function gesture(origin) {
+  return { origin, samples: [{ position, time: performance.now() }] };
+}
+function sample(input) {
+  const now = performance.now();
+  input.samples.push({ position, time: now });
+  while (input.samples.length > 2 && input.samples[0].time < now - VELOCITY_WINDOW_MS) input.samples.shift();
+}
+function releaseTarget(input, idle = 0) {
+  const first = input.samples[0];
+  const last = input.samples.at(-1);
+  const elapsed = last.time - first.time;
+  const velocity = elapsed > 0 && performance.now() - last.time < VELOCITY_WINDOW_MS + idle
+    ? (last.position - first.position) / elapsed : 0;
+  const travel = position - input.origin;
+  const intent = travel + velocity * PROJECTION_MS;
+  const origin = nearest(input.origin);
+  return Math.abs(intent) >= INTENT_DISTANCE ? origin + Math.sign(intent) : origin;
+}
 function stopAnimation() {
   cancelAnimationFrame(animation);
   animation = undefined;
+  gallery.classList.remove('is-moving');
 }
 function stopWheel() {
   clearTimeout(wheel?.idle);
@@ -53,13 +77,14 @@ function snap(target) {
   stopWheel();
   const start = position;
   const distance = target - start;
-  const duration = parseFloat(getComputedStyle(gallery).getPropertyValue('--motion-duration')) * Math.max(0.5, Math.min(1, Math.abs(distance)));
+  const duration = SNAP_DURATION_MS;
   if (reducedMotion.matches || Math.abs(distance) < 0.0001) {
     position = target;
     render();
     announce();
     return;
   }
+  gallery.classList.add('is-moving');
   const started = performance.now();
   function frame(now) {
     const progress = clamp((now - started) / duration, 0, 1);
@@ -68,6 +93,7 @@ function snap(target) {
     if (progress < 1) animation = requestAnimationFrame(frame);
     else {
       animation = undefined;
+      gallery.classList.remove('is-moving');
       announce();
     }
   }
@@ -90,18 +116,20 @@ document.addEventListener('keydown', event => {
 });
 gallery.addEventListener('wheel', event => {
   if (event.ctrlKey || pointer) return;
-  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-  if (!delta) return;
+  if (!event.deltaX && !event.deltaY) return;
   event.preventDefault();
   if (!wheel) {
     stopAnimation();
-    wheel = { origin: position, idle: undefined };
+    wheel = { ...gesture(position), axis: Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'deltaX' : 'deltaY', idle: undefined };
+    gallery.classList.add('is-moving');
   }
+  const delta = event[wheel.axis];
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? gallery.clientHeight : 1;
   position = clamp(position + delta * unit / stepWidth(), wheel.origin - 1, wheel.origin + 1);
+  sample(wheel);
   render();
   clearTimeout(wheel.idle);
-  wheel.idle = setTimeout(() => snap(nearest(position)), WHEEL_IDLE_MS);
+  wheel.idle = setTimeout(() => snap(releaseTarget(wheel, WHEEL_IDLE_MS)), WHEEL_IDLE_MS);
 }, { passive: false });
 
 gallery.addEventListener('pointerdown', event => {
@@ -109,7 +137,7 @@ gallery.addEventListener('pointerdown', event => {
   stopAnimation();
   stopWheel();
   suppressClick = false;
-  pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, origin: position, dragged: false };
+  pointer = { ...gesture(position), id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false };
 });
 gallery.addEventListener('pointermove', event => {
   if (!pointer || pointer.id !== event.pointerId) return;
@@ -118,13 +146,14 @@ gallery.addEventListener('pointermove', event => {
   if (!pointer.dragged && (Math.abs(dx) < DRAG_THRESHOLD || Math.abs(dx) <= Math.abs(dy))) return;
   pointer.dragged = true;
   gallery.setPointerCapture(event.pointerId);
-  gallery.classList.add('is-dragging');
+  gallery.classList.add('is-dragging', 'is-moving');
   position = pointer.origin + clamp(-dx / stepWidth(), -1, 1);
+  sample(pointer);
   render();
 });
 function endDrag(event) {
   if (!pointer || pointer.id !== event.pointerId) return;
-  const target = nearest(event.type === 'pointercancel' ? pointer.origin : position);
+  const target = event.type === 'pointercancel' || !pointer.dragged ? nearest(pointer.origin) : releaseTarget(pointer);
   suppressClick = pointer.dragged;
   pointer = undefined;
   gallery.classList.remove('is-dragging');

@@ -16,6 +16,8 @@ nav.chrome { top: var(--space-6); justify-content: space-between; }
 footer.chrome { bottom: var(--space-6); justify-content: space-between; gap: var(--space-4); }
 .buttons, .preferences { display: flex; gap: var(--space-1); align-items: center; background: var(--scrim); padding: var(--space-1); }
 .chrome button, .chrome select, #show-controls { min-height: var(--control-height); padding: 0 var(--space-4); border: 0; border-radius: 0; background: transparent; font-size: var(--text-small); }
+.chrome .icon-button { width: var(--control-height); padding: 0; display: inline-grid; place-items: center; }
+.icon-button svg { width: 20px; height: 20px; }
 .chrome button:hover, .chrome select:hover, #show-controls:hover { background: var(--surface-hover); }
 .chrome button:active, #show-controls:active { background: var(--surface); }
 .chrome select { cursor: pointer; }

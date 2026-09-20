@@ -1,4 +1,5 @@
 import { qualityName } from './render-policy.js';
+import { setActionIcon } from '../../ui/icons.js';
 
 export function preferredQuality(params) {
   let saved;
@@ -11,9 +12,17 @@ export function installControls({ habitat, isPaused, isRunning, pause, feed, qua
   const pauseButton = document.querySelector('#pause');
   const feedButton = document.querySelector('#feed');
   const select = document.querySelector('#quality');
+  const fullscreenButton = document.querySelector('#fullscreen');
+  setActionIcon(feedButton, 'feed', 'Feed fish');
+  function refreshFullscreen() {
+    const active = Boolean(document.fullscreenElement);
+    setActionIcon(fullscreenButton, active ? 'exit-fullscreen' : 'fullscreen', active ? 'Exit fullscreen' : 'Fullscreen', 'F');
+  }
+  document.addEventListener('fullscreenchange', refreshFullscreen);
+  refreshFullscreen();
   function refresh() {
     if (pauseButton) {
-      pauseButton.textContent = isPaused() ? 'Resume' : 'Pause';
+      setActionIcon(pauseButton, isPaused() ? 'play' : 'pause', isPaused() ? 'Play' : 'Pause', 'Space');
       pauseButton.setAttribute('aria-pressed', String(isPaused()));
     }
     if (feedButton) feedButton.disabled = !isRunning();
@@ -32,7 +41,7 @@ export function installControls({ habitat, isPaused, isRunning, pause, feed, qua
   }
   pauseButton?.addEventListener('click', () => pause(!isPaused()));
   feedButton?.addEventListener('click', feed);
-  document.querySelector('#fullscreen')?.addEventListener('click', fullscreen);
+  fullscreenButton?.addEventListener('click', fullscreen);
   document.querySelector('#hide')?.addEventListener('click', () => clean(true));
   document.querySelector('#show-controls')?.addEventListener('click', () => clean(false));
   select?.addEventListener('change', () => {

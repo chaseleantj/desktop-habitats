@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { renderSettings, framebufferSize } from '../src/render-policy.js';
-import { createFrameLoop } from '../src/frame-loop.js';
+import { frameRate, qualityName, renderScale, QUALITY_PRESETS } from '../../shared/render-policy.js';
+import { createFrameLoop } from '../../shared/frame-loop.js';
 
 const reference = renderSettings({ profile: 'reference', wallpaper: true, pixelRatio: 2 });
 const balanced = renderSettings({ wallpaper: true, pixelRatio: 2 });
 const battery = renderSettings({ wallpaper: true, pixelRatio: 2, onBattery: true });
 assert.equal(reference.resolution, 2);
 assert.equal(balanced.resolution, 1.25);
-assert.equal(battery.resolution, 1.15);
+assert.equal(battery.resolution, 1.125);
 assert.equal(balanced.samples, 4, 'Preserve quarter-coverage foliage translucency');
 assert.equal(balanced.shadowSize, 2048);
 assert.equal(balanced.shadowHz, 30);
@@ -67,3 +68,15 @@ h.loop.setRate(30);h.advance(100);h.loop.dispose();h.loop.invalidate();assert.eq
 const still=harness(0);still.advance(100);assert.equal(still.frames.length,1);assert.equal(still.tasks.size,0);
 const reduced=harness(60,60,true);reduced.advance(1000);assert.equal(reduced.frames.length,1);assert.equal(reduced.tasks.size,0);
 console.log('PASS: render budgets, zero-size/large targets, 20/30/60 fps pacing at 60/120 Hz, stop/resume, reduced motion, hidden invalidation and zero idle callbacks');
+
+for (const [quality, fps] of [['eco',20],['balanced',30],['detail',60]]) {
+  assert.equal(frameRate(quality), fps);
+  assert.equal(frameRate(quality, 0), 0);
+  assert.equal(frameRate(quality, NaN), 0);
+  assert.equal(frameRate(quality, 60, true), Math.min(fps,30));
+  assert.equal(renderScale(quality, 3), QUALITY_PRESETS[quality].dpr);
+}
+assert.equal(qualityName('toString'), 'balanced');
+assert.equal(renderScale('balanced', NaN), 1);
+assert.equal(renderScale('detail', 1), 1);
+assert.deepEqual(framebufferSize(3840,2160,1.25,8192,1800000), {width:1789,height:1006,scale:Math.sqrt(1800000/(3840*2160))});

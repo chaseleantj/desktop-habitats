@@ -51,23 +51,22 @@ The desktop app supports macOS only. The browser preview needs a browser with We
 
 It uses more power than a still wallpaper because it renders a 3D scene. The amount depends on your Mac, screen resolution and number of displays. There isn't a measured battery-life estimate yet.
 
-Riverscape's optimized build thins the rear rivergrass by about 30%, reduces oversampling and shadow work, and fully stops the render loop when paused or hidden. It keeps 4× multisampling, the HDR lighting, all 24 fish and the foreground planting. On an M5 Pro this halves the GPU time per frame; battery drain has not been measured.
+Both scenes use the same quality profiles and stop rendering when paused or hidden. The wallpaper also responds to window coverage, battery power, Low Power Mode and screen sleep.
 
-The wallpaper keeps the same frame-rate limits, so rendering improvements are not spent on extra frames. Reefscape caps itself lower still:
+With the default Balanced profile, both environments use these limits:
 
-| Desktop state | Riverscape | Reefscape |
-| --- | --- | --- |
-| Clearly visible, plugged in | Up to 60 fps | Up to 30 fps |
-| Clearly visible, on battery | Up to 30 fps | Up to 24 fps |
-| Mostly covered by windows | Up to 20 fps | Up to 20 fps |
-| Almost entirely covered | Stopped | Stopped |
-| Low Power Mode, locked screen or sleeping display | Stopped | Stopped |
+| Desktop state | Frame rate |
+| --- | --- |
+| Clearly visible, plugged in or on battery | Up to 30 fps |
+| Mostly covered by windows | Up to 20 fps |
+| Almost entirely covered | Stopped |
+| Low Power Mode, locked screen or sleeping display | Stopped |
 
-Pause it from the menu when you want a still aquarium, or quit to close the app completely. These power controls belong to the wallpaper app; the browser previews do not have the same battery-aware limits, though Reefscape offers Eco, Balanced and Detail profiles of its own.
+Pause it from the menu when you want a still aquarium, or quit to close the app completely. The browser previews offer Eco, Balanced and Detail profiles; actual frame rates depend on the device and scene. Battery life has not been measured.
 
 ### Does it monitor my keystrokes?
 
-No. The wallpaper does not listen to typing in other apps or record keystrokes. The browser previews handle Space and F only while that page has focus, for pause and fullscreen. Reefscape also uses H to hide its controls.
+No. The wallpaper does not listen to typing in other apps or record keystrokes. Both browser previews handle Space to pause or resume, F for fullscreen, and H to hide or show controls while the aquarium has focus.
 
 The wallpaper reads your cursor position so the fish can react. It also checks window positions and sizes to estimate how much of the desktop is visible. It does not capture the contents of those windows, store cursor history, or send this information anywhere.
 
@@ -119,8 +118,10 @@ Open [the local preview](http://127.0.0.1:8080). There is no `npm install` step;
 
 - Click the water to drop food.
 - Move the pointer near the fish to interact.
-- Press **Space** to pause or resume, and **F** for fullscreen. In Reefscape, **H** hides the controls.
-- In Reefscape, **Energy / detail** picks Eco (24 fps), Balanced (30 fps, the default) or Detail (45 fps). These are caps, not promises.
+- Swipe or scroll through the gallery, or use the left and right arrow keys. Open the image or name to enter a scene.
+- Use **Pause / Resume**, **Feed**, **Fullscreen** and **Hide controls** in either scene. **Show controls** brings the controls back.
+- Press **Space** to pause or resume, **F** for fullscreen, and **H** to hide or show controls while the aquarium has focus.
+- **Quality** offers Eco (20 fps), Balanced (30 fps, the default) and Detail (60 fps). The selection is shared between the two scenes and remembered. These are frame-rate caps; lower profiles also reduce rendering resolution.
 
 Reduce Motion starts the preview paused. Serve the page over HTTP; opening `index.html` directly will not load its JavaScript modules. Any static server also works, such as `python3 -m http.server 8080 --bind 127.0.0.1` if you have Python installed.
 
@@ -128,7 +129,7 @@ Reduce Motion starts the preview paused. Serve the page over HTTP; opening `inde
 
 In Riverscape, one water model drives the plants, drifting particles, fish and underwater lighting. Fish alternate between swimming and coasting, explore the tank, avoid neighbours and compete for pellets. Reefscape runs a fixed-step simulation of its fish and shrimp, with GPU-animated anemone tentacles, merged static coral geometry and a cached hardscape shadow map. Both scenes use raster rendering with custom GLSL shaders, shadows and depth effects.
 
-Each scene lives in its own directory under `scenes/`, with its textures and tests. The root page is a chooser and the Mac app has an Environment menu; there is no plugin system. Reefscape reads the sand and rock maps from Riverscape's assets, so the two directories ship together.
+Each scene owns its organisms, lighting and materials. Both use `scenes/shared/` for frame scheduling, quality settings, controls, random generation, postprocessing setup and diagnostics. The root page is a spatial gallery and the Mac app has an Environment menu. Reefscape reads the sand and rock maps from Riverscape's assets, so both scene directories ship together.
 
 | Files | Purpose |
 | --- | --- |
@@ -137,6 +138,8 @@ Each scene lives in its own directory under `scenes/`, with its textures and tes
 | `scenes/riverscape/assets/` | Rock, wood and sand textures |
 | `scenes/riverscape/tests/` | Riverscape's headless simulation checks |
 | `scenes/reefscape/` | Reefscape's preview, wallpaper page, organisms, simulation, baked assets and tests |
+| `scenes/shared/` | Shared scene startup, controls, rendering policy and runtime helpers |
+| `ui/` | Gallery presentation and shared interface styles |
 | `tools/` | Python scripts that rebuild Reefscape's baked rock mesh and pore maps |
 | `wallpaper/` | Mac app and install/uninstall scripts |
 | `vendor/` | Bundled Three.js library and license |
@@ -151,9 +154,9 @@ npm test
 
 These check JavaScript syntax; simulate swimming, spacing, startle responses and feeding; verify render budgets and frame pacing at 60/120 Hz; and confirm that rear-grass thinning leaves the foreground geometry and downstream random sequence unchanged. They also check that paused/hidden scenes have no scheduled render callbacks. Reefscape's tests run three minutes of simulation with deterministic seeding, keep the clownfish near their host, bound the food and check the baked rock mesh and fish geometry. They do not measure Mac battery use.
 
-The default rendering profile is `balanced`. Append `?quality=reference&still=1` to a scene page for the original density/render budgets at simulation time zero, or `?still=1` for the optimized still. Append `diagnostics=1` to enable the local `habitatBenchmark()` function. Nothing is uploaded.
+The default rendering profile is `balanced`. In Riverscape, append `?still=1` for a paused frame, or `?quality=reference&still=1` for its original density and rendering budgets. Reefscape uses `?capture=1` for a paused, control-free frame. Append `diagnostics=1` to either scene to enable the local `habitatBenchmark()` function. Nothing is uploaded.
 
-Browser errors appear in the developer console. Wallpaper errors and frame-rate changes go to `/tmp/desktop-habitats.log`. Sending `SIGUSR1` to the Desktop Habitats process saves a snapshot of its first tank to `/tmp/desktop-habitats.png`.
+Startup failures show a reload link; error details appear in the developer console. Wallpaper errors and frame-rate changes go to `/tmp/desktop-habitats.log`. Sending `SIGUSR1` to the Desktop Habitats process saves a snapshot of its first tank to `/tmp/desktop-habitats.png`.
 
 If you change the app's bundle ID, update `com.chaselean.desktop-habitats` in `wallpaper/install.sh`, `wallpaper/uninstall.sh` and `wallpaper/Info.plist` together.
 

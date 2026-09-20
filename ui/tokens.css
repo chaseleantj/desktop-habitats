@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+  --background: #09110f;
+  --surface: #14201c;
+  --surface-hover: #24352c;
+  --text: #eeeede;
+  --text-muted: #afbbad;
+  --border: #526254;
+  --focus: #d8e5b4;
+  --scrim: #030906cc;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --text-small: 12px;
+  --text-body: 14px;
+  --text-brand: 21px;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --control-height: 44px;
+  --stroke: 1px;
+  --focus-stroke: 2px;
+  --motion-duration: 360ms;
+  --motion-ease: cubic-bezier(.2,.65,.3,1);
+  font-family: var(--font-body);
+  font-synthesis: none;
+  background: var(--background);
+  color: var(--text);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: inherit; text-decoration: none; }
+button, select { font: inherit; color: inherit; }
+button, a, select { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+a:focus-visible, button:focus-visible, select:focus-visible, canvas:focus-visible {
+  outline: var(--focus-stroke) solid var(--focus);
+  outline-offset: var(--space-1);
+}
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

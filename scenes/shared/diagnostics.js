@@ -57,7 +57,7 @@ export function installDiagnostics({ renderer, loop, renderFrame, stats }) {
         meanDrawCalls: calls / durations.length, meanTriangles: triangles / durations.length,
         settings: stats(), durations,
       };
-      console.info('Riverscape benchmark', result);
+      console.info('Habitat benchmark', result);
       return result;
     } finally {
       busy = false;

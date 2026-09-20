@@ -1,51 +1,10 @@
-:root {
-  color-scheme: dark;
-  background: #080e0c;
-}
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-}
-main {
-  position: relative;
-  width: 100vw;
-  height: min(100vh, 52.113vw);
-  background: #050b08;
-  overflow: hidden;
-}
-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  outline: none;
-}
-[data-fit="fill"] main {
-  height: 100vh;
-}
-#habitat:fullscreen canvas {
-  position: absolute;
-  top: 50%;
-  height: min(100%, 52.113vw);
-  transform: translateY(-50%);
-}
-[hidden] {
-  display: none !important;
-}
-#loading {
-  position: absolute;
-  inset: 0;
-  background: #080e0c;
-  pointer-events: none;
-  transition: opacity 0.8s;
-}
-@media (prefers-reduced-motion: reduce) {
-  #loading {
-    transition: none;
-  }
+@import url("../../ui/scene.css");
+#habitat { height: min(100vh, 52.113vw); }
+[data-fit="fill"] #habitat { height: 100vh; }
+#habitat:fullscreen { height: 100vh; }
+#habitat:fullscreen #scene { position: absolute; top: 50%; height: min(100%, 52.113vw); transform: translateY(-50%); }
+@media (max-width: 600px) {
+  #habitat { height: calc(100svh - 200px); }
+  [data-fit="fill"] #habitat { height: 100vh; }
+  #habitat:fullscreen #scene { top: 0; height: 100%; transform: none; }
 }

@@ -1,0 +1,39 @@
+@import url("./tokens.css");
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; }
+#habitat { position: relative; min-width: 0; min-height: 0; width: 100%; height: 100svh; }
+#scene { display: block; width: 100%; height: 100%; touch-action: manipulation; }
+#scene:focus-visible { outline-offset: calc(-1 * var(--space-1)); }
+.chrome { position: fixed; z-index: 2; left: var(--space-8); right: var(--space-8); display: flex; align-items: center; font-size: var(--text-small); }
+nav.chrome { top: var(--space-6); justify-content: space-between; }
+.home-link { font-size: var(--text-brand); letter-spacing: -.04em; }
+.scene-nav { display: flex; gap: var(--space-6); align-items: center; }
+.chrome a, .scene-nav span { min-height: var(--control-height); display: inline-flex; align-items: center; }
+.chrome a, .scene-nav span, .home-link { text-shadow: 0 2px 12px var(--background); }
+.scene-nav [aria-current] { text-decoration: underline; text-underline-offset: var(--space-2); }
+.scene-nav a { color: var(--text-muted); }
+.scene-nav a:hover { color: var(--text); }
+footer.chrome { bottom: var(--space-6); justify-content: space-between; gap: var(--space-4); }
+.buttons, .preferences { display: flex; gap: var(--space-1); align-items: center; background: var(--scrim); padding: var(--space-1); }
+.chrome button, .chrome select, #show-controls { min-height: var(--control-height); padding: 0 var(--space-4); border: 0; border-radius: 0; background: transparent; font-size: var(--text-small); }
+.chrome button:hover, .chrome select:hover, #show-controls:hover { background: var(--surface-hover); }
+.chrome button:active, #show-controls:active { background: var(--surface); }
+.chrome select { cursor: pointer; }
+.chrome select option { background: var(--background); }
+#show-controls { display: none; position: fixed; z-index: 3; bottom: var(--space-6); right: var(--space-8); background: var(--scrim); }
+.clean .chrome { visibility: hidden; pointer-events: none; }
+.clean #show-controls { display: block; }
+.capture #show-controls { display: none; }
+[data-motion="host"] .chrome, [data-motion="host"] #show-controls { display: none; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--background); pointer-events: none; z-index: 1; transition: opacity var(--motion-duration) var(--motion-ease); }
+#loading p { font: 400 var(--text-body)/1.5 var(--font-body); color: var(--text-muted); }
+#error { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 4; width: min(440px, calc(100% - var(--space-12))); padding: var(--space-8); background: var(--surface); border: var(--stroke) solid var(--border); font-size: var(--text-body); line-height: 1.6; }
+#error a { text-decoration: underline; text-underline-offset: var(--space-1); }
+@media (max-width: 600px) {
+  .chrome { left: var(--space-4); right: var(--space-4); }
+  nav.chrome { top: var(--space-3); }
+  .scene-nav { gap: var(--space-4); }
+  footer.chrome { left: 50%; right: auto; width: max-content; max-width: calc(100% - var(--space-8)); transform: translateX(-50%); bottom: var(--space-4); align-items: center; flex-direction: column; gap: 0; background: var(--scrim); padding: var(--space-1); }
+  .buttons, .preferences { background: transparent; padding: 0; }
+  #show-controls { bottom: var(--space-4); right: var(--space-4); }
+}

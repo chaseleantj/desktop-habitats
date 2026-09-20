@@ -1,3 +1,6 @@
+import { qualityName, frameRate } from '../../shared/render-policy.js';
+import { installControls, reportSceneError, preferredQuality } from '../../shared/controls.js';
+import { createComposite } from './composite.js';
 import * as THREE from "three";
 import { createEnvironment, createParticles } from "./environment.js";
 import { createPlants } from "./plants.js";
@@ -5,7 +8,7 @@ import { createFishSchool } from "./fish.js";
 import { createFood } from "./food.js";
 import { randomGenerator } from "./math.js";
 import { waterTime } from "./water.js";
-import { createFrameLoop } from "./frame-loop.js";
+import { createFrameLoop } from "../../shared/frame-loop.js";
 import { renderSettings, framebufferSize } from "./render-policy.js";
 
 const canvas = document.querySelector("#scene");
@@ -21,15 +24,17 @@ let paused =
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 const query = new URLSearchParams(location.search);
 const wallpaper = document.documentElement.dataset.motion === "host";
-const profile = query.get("quality") === "reference" ? "reference" : "balanced";
+let profile = query.get("quality") === "reference" ? "reference" : preferredQuality(query);
 if (query.get("still") === "1") paused = true;
 let onBattery = false;
 let settings = renderSettings({ profile, wallpaper, pixelRatio: devicePixelRatio });
 let requestedRate = wallpaper ? 0 : 60;
-let loop = null, applyPower = null;
+let loop = null, applyPower = null, updateControls = () => {};
+window.habitatPause = (value) => { paused = Boolean(value); loop?.setPaused(paused); updateControls(); };
 window.habitatRate = (fps) => {
   requestedRate = Number.isFinite(fps) && fps > 0 ? Math.min(120, fps) : 0;
-  loop?.setRate(requestedRate);
+  loop?.setRate(frameRate(profile, requestedRate, onBattery));
+  updateControls();
 };
 // Geometry never changes on a power transition: no plant popping or regeneration.
 window.habitatPower = (battery) => {
@@ -38,6 +43,8 @@ window.habitatPower = (battery) => {
   onBattery = next;
   settings = renderSettings({ profile, wallpaper, pixelRatio: devicePixelRatio, onBattery });
   applyPower?.();
+  loop?.setRate(frameRate(profile, requestedRate, onBattery));
+  updateControls();
 };
 // A pinch of food, for a host with no pointer to click with. Defined before the scene
 // exists and harmless until it does. Nothing is dropped into water that is not moving,
@@ -45,13 +52,10 @@ window.habitatPower = (battery) => {
 // fish never see, and they would all arrive at once whenever the water started again.
 let sprinkle = null;
 window.habitatFeed = () => {
-  if (sprinkle && !paused && requestedRate > 0 && !document.hidden) sprinkle();
+  if (sprinkle && loop?.state.running) sprinkle();
 };
 
-function fail(error) {
-  console.error(error);
-  loading.hidden = true;
-}
+
 
 async function start() {
   const renderer = new THREE.WebGLRenderer({
@@ -162,56 +166,20 @@ async function start() {
   });
   const particles = createParticles(scene, { thickets: plants.thickets });
 
-  const target = new THREE.WebGLRenderTarget(1, 1, {
-    type: THREE.HalfFloatType,
-    samples: settings.samples,
-  });
-  target.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
-  const postScene = new THREE.Scene(),
-    postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const post = new THREE.ShaderMaterial({
-    uniforms: {
-      beauty: { value: target.texture },
-      depth: { value: target.depthTexture },
-      size: { value: new THREE.Vector2() },
-      nearFar: { value: new THREE.Vector2(camera.near, camera.far) },
-      aoRadiusScale: { value: 1 },
-    },
-    depthTest: false,
-    depthWrite: false,
-    vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
-    fragmentShader: `
-      uniform sampler2D beauty;uniform sampler2D depth;uniform vec2 size;uniform vec2 nearFar;uniform float aoRadiusScale;varying vec2 vUv;
-      float distanceAt(vec2 p){float z=texture2D(depth,p).x;return nearFar.x*nearFar.y/(nearFar.y-z*(nearFar.y-nearFar.x));}
-      void main(){
-        vec3 color=texture2D(beauty,vUv).rgb;float center=distanceAt(vUv);float occlusion=0.;
-        for(int i=0;i<${settings.aoSamples};i++) {
-          float a=float(i)*2.399963;float radius=2.5+float(i)*${(14.85 / (settings.aoSamples - 1)).toFixed(8)};
-          float sampleDepth=distanceAt(vUv+vec2(cos(a),sin(a))*radius*aoRadiusScale/size);
-          float difference=center-sampleDepth;
-          occlusion+=smoothstep(.012,.13,difference)*(1.-smoothstep(.2,.8,difference));
-        }
-        color*=1.-occlusion*${(0.022 * 12 / settings.aoSamples).toFixed(8)};
-        float vignette=dot((vUv-.5)*vec2(1.,.85),(vUv-.5)*vec2(1.,.85));
-        color*=1.-vignette*.15;
-        gl_FragColor=vec4(color,1.);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`,
-  });
-  postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post));
+  const { target, post, postScene, postCamera } = createComposite(camera, settings);
 
   let contextLost = false, zeroSize = false, forceShadows = true;
   const maxDimension = Math.min(renderer.capabilities.maxTextureSize,
     renderer.getContext().getParameter(renderer.getContext().MAX_RENDERBUFFER_SIZE));
   function visibility() {
     loop?.setHidden(document.hidden || contextLost || zeroSize);
+    updateControls();
   }
   function resize() {
     const bounds = canvas.getBoundingClientRect();
     // DPR may change when a preview moves between monitors.
     settings = renderSettings({ profile, wallpaper, pixelRatio: devicePixelRatio, onBattery });
-    const dimensions = framebufferSize(bounds.width, bounds.height, settings.resolution, maxDimension);
+    const dimensions = framebufferSize(bounds.width, bounds.height, settings.resolution, maxDimension, settings.maxPixels);
     zeroSize = !dimensions;
     visibility();
     if (!dimensions) return;
@@ -291,7 +259,7 @@ async function start() {
   // can only ever say two of the three things.
   const dropPoint = new THREE.Vector3();
   canvas.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || !event.isPrimary || paused || requestedRate === 0) return;
+    if (event.button !== 0 || !event.isPrimary || !loop?.state.running) return;
     const bounds = canvas.getBoundingClientRect();
     raycaster.setFromCamera(
       new THREE.Vector2(
@@ -310,21 +278,17 @@ async function start() {
     food.drop(dropPoint.set(-3.6 + scatter() * 7.2, 0, 0));
   };
 
-  function fullscreen() {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else
-      habitat
-        .requestFullscreen()
-        .catch((error) => console.warn(error.message));
-  }
-  document.addEventListener("keydown", (event) => {
-    if (event.repeat) return;
-    if (event.code === "Space") {
-      event.preventDefault();
-      paused = !paused;
-      loop?.setPaused(paused);
-    }
-    if (event.key.toLowerCase() === "f") fullscreen();
+  updateControls = installControls({
+    habitat, isPaused: () => paused,
+    isRunning: () => Boolean(loop?.state.running),
+    pause: window.habitatPause, feed: window.habitatFeed,
+    quality: () => profile === 'reference' ? 'detail' : profile,
+    setQuality(value) {
+      profile = qualityName(value);
+      loop?.setRate(frameRate(profile, requestedRate, onBattery));
+      resize();
+      updateControls();
+    },
   });
   // Mesh transforms are static. Fish/food use instance matrices, foliage and particles
   // move in vertex shaders. Avoid recomposing every unchanged object matrix per frame.
@@ -368,8 +332,9 @@ async function start() {
     }
   }
   loop = createFrameLoop(renderFrame, {
-    fps: requestedRate, paused, hidden: document.hidden || zeroSize || contextLost,
+    fps: frameRate(profile, requestedRate, onBattery), paused, hidden: document.hidden || zeroSize || contextLost,
   });
+  updateControls();
   window.habitatStats = () => ({
     profile, onBattery, resolution: settings.resolution,
     framebuffer: [target.width, target.height], samples: target.samples,
@@ -381,7 +346,7 @@ async function start() {
   });
   // Diagnostics are opt-in: no timing queries, synchronization or arrays in normal use.
   if (query.get("diagnostics") === "1") {
-    const { installDiagnostics } = await import("./diagnostics.js");
+    const { installDiagnostics } = await import("../../shared/diagnostics.js");
     installDiagnostics({ renderer, loop, renderFrame, stats: window.habitatStats });
   }
   window.addEventListener("pagehide", () => {
@@ -391,4 +356,4 @@ async function start() {
 
 }
 
-start().catch(fail);
+start().catch(reportSceneError);

@@ -23,11 +23,35 @@
     <main id="habitat" aria-label="Interactive freshwater aquarium">
       <canvas
         id="scene"
-        aria-label="A planted freshwater aquarium. Move the pointer gently near the fish to interact."
+        aria-label="A planted freshwater aquarium. Move the pointer near fish to interact. Click to feed. Space pauses. F enters fullscreen. H hides controls."
         tabindex="0"
       ></canvas>
-      <div id="loading" aria-hidden="true"></div>
+      <nav class="chrome" aria-label="Aquariums">
+        <a class="home-link" href="../../" aria-label="Habitats home">Habitats</a>
+        <div class="scene-nav">
+          <span aria-current="page">Riverscape</span>
+          <a href="../reefscape/">Reefscape</a>
+        </div>
+      </nav>
+      <footer class="chrome" aria-label="Aquarium controls">
+        <div class="buttons">
+          <button disabled id="pause" aria-pressed="false" title="Space">Pause</button>
+          <button disabled id="feed">Feed</button>
+          <button disabled id="fullscreen" title="F">Fullscreen</button>
+        </div>
+        <div class="preferences">
+          <select disabled id="quality" aria-label="Quality">
+            <option value="eco">Eco</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="detail">Detail</option>
+          </select>
+          <button disabled id="hide" title="H">Hide controls</button>
+        </div>
+      </footer>
+      <button disabled id="show-controls" title="H">Show controls</button>
+      <div id="loading" role="status"><p>Loading aquarium…</p></div>
+      <div id="error" role="alert" hidden></div>
     </main>
-    <script type="module" src="src/main.js"></script>
+    <script type="module" src="../shared/start.js" data-entry="./src/main.js"></script>
   </body>
 </html>

@@ -89,7 +89,7 @@ export async function createTerrain(scene){
     tint(g,()=>new THREE.Color('#cdc2ae').multiplyScalar(.72+rng()*.34));rubble.push(g);
   }
   const rubbleMesh=new THREE.Mesh(merge(rubble),underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),{key:'rubble'}));rubbleMesh.receiveShadow=true;scene.add(rubbleMesh);
-  return {obstacles:ROCKS,host:HOST,stations:STATIONS};
+  return {obstacles:ROCKS,host:HOST,stations:STATIONS,rockSurface:rocks};
 }
 /** The tank's back wall, seen from inside the water: deep indigo at the sand, lifting a
  *  little toward the lamps, and seen through the whole depth of the tank, so it takes the

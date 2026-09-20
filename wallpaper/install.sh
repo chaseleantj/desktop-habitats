@@ -36,7 +36,7 @@ cp "$here/Info.plist" "$app/Contents/Info.plist"
 for scene in "$project"/scenes/*; do
 	cp -R "$scene" "$app/Contents/Resources/scene/scenes/"
 done
-cp -R "$project/vendor" "$app/Contents/Resources/scene/"
+cp -R "$project/vendor" "$project/ui" "$app/Contents/Resources/scene/"
 rm -rf "$app"/Contents/Resources/scene/scenes/*/tests
 codesign --force --sign - "$app" >/dev/null 2>&1 || true
 

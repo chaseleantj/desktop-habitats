@@ -1,14 +1,7 @@
 import * as THREE from "three";
 
-export function randomGenerator(seed) {
-  return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let n = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    n = (n + Math.imul(n ^ (n >>> 7), 61 | n)) ^ n;
-    return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { randomGenerator } from "../../shared/random.js";
+export { randomGenerator };
 
 export const random = randomGenerator(34191);
 export const range = (a, b) => a + (b - a) * random();

@@ -26,29 +26,32 @@
         tabindex="0"
         aria-label="A saltwater tank with three clownfish, an anemone, small reef fish and cleaner shrimp. Click to feed. Space pauses. F enters fullscreen. H hides controls."
       ></canvas>
-      <nav class="chrome" aria-label="Environment">
-        <a href="../riverscape/">Riverscape</a>
-        <span aria-current="page">Reefscape</span>
+      <nav class="chrome" aria-label="Aquariums">
+        <a class="home-link" href="../../" aria-label="Habitats home">Habitats</a>
+        <div class="scene-nav">
+          <a href="../riverscape/">Riverscape</a>
+          <span aria-current="page">Reefscape</span>
+        </div>
       </nav>
-      <footer class="chrome">
+      <footer class="chrome" aria-label="Aquarium controls">
         <div class="buttons">
-          <button id="feed" title="Drop a little food">Feed</button>
-          <button id="pause" aria-pressed="false" title="Space">Pause</button>
-          <button id="fullscreen" title="F">Fullscreen</button>
+          <button disabled id="pause" aria-pressed="false" title="Space">Pause</button>
+          <button disabled id="feed">Feed</button>
+          <button disabled id="fullscreen" title="F">Fullscreen</button>
         </div>
         <div class="preferences">
-          <label for="quality">Energy / detail</label>
-          <select id="quality">
-            <option value="eco">Eco · 24 fps</option>
-            <option value="balanced" selected>Balanced · 30 fps</option>
-            <option value="detail">Detail · 45 fps</option>
+          <select disabled id="quality" aria-label="Quality">
+            <option value="eco">Eco</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="detail">Detail</option>
           </select>
-          <button id="hide" title="H toggles controls">Hide UI</button>
+          <button disabled id="hide" title="H">Hide controls</button>
         </div>
       </footer>
-      <div id="loading" role="status"><p>Settling into salt water</p></div>
+      <button disabled id="show-controls" title="H">Show controls</button>
+      <div id="loading" role="status"><p>Loading aquarium…</p></div>
       <div id="error" role="alert" hidden></div>
     </main>
-    <script type="module" src="src/main.js"></script>
+    <script type="module" src="../shared/start.js" data-entry="./src/main.js"></script>
   </body>
 </html>

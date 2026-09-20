@@ -1,10 +1,9 @@
+import { QUALITY_PRESETS, qualityName, renderScale } from '../../shared/render-policy.js';
 // Rendering budgets, kept separate from animation and habitat behaviour. The reference
 // profile reproduces the uploaded rendering/density settings for local A/B checks.
 export const PROFILES = Object.freeze({
   balanced: Object.freeze({
     name: 'balanced',
-    resolution: 1.25,
-    batteryResolution: 1.15,
     shadowSize: 2048,
     shadowHz: 30,
     batteryShadowHz: 15,
@@ -37,7 +36,8 @@ export function renderSettings({
     ...budget,
     // Do not make Retina resolution a multiplier of an already supersampled target.
     resolution: budget.name === 'reference' ? referenceResolution :
-      (onBattery ? budget.batteryResolution : budget.resolution),
+      renderScale(profile, pixelRatio, onBattery),
+    maxPixels: budget.name === 'reference' ? Infinity : QUALITY_PRESETS[qualityName(profile)].pixels,
     referenceResolution,
     shadowHz: onBattery ? budget.batteryShadowHz : budget.shadowHz,
     // The leaf shader uses quarter-sample coverage for translucent tissue. Keep 4x
@@ -46,12 +46,4 @@ export function renderSettings({
   };
 }
 
-export function framebufferSize(width, height, scale, maxDimension = 8192) {
-  if (!(width > 0 && height > 0 && scale > 0)) return null;
-  const safeScale = Math.min(scale, maxDimension / width, maxDimension / height);
-  return {
-    width: Math.max(1, Math.round(width * safeScale)),
-    height: Math.max(1, Math.round(height * safeScale)),
-    scale: safeScale,
-  };
-}
+export { framebufferSize } from '../../shared/render-policy.js';

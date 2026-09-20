@@ -3,152 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#102127" />
-    <meta
-      name="description"
-      content="Living aquariums for your desktop. Choose Riverscape, a planted freshwater tank, or Reefscape, a saltwater tank."
-    />
-    <title>Desktop Habitats</title>
+    <meta name="theme-color" content="#09110f" />
+    <meta name="description" content="Two living aquariums. Explore a planted river or a coral reef, in your browser or on your desktop." />
+    <title>Habitats — living aquariums</title>
     <link rel="icon" href="data:," />
-    <style>
-      :root {
-        color-scheme: dark;
-        --background: #102127;
-        --surface: #193039;
-        --border: #b4c5c327;
-        --border-strong: #b5cab57f;
-        --text: #e6e9df;
-        --text-muted: #aec0bc;
-        --focus: #d4dbb3;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        background: var(--background);
-        color: var(--text);
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-      main {
-        max-width: 1240px;
-        margin: 0 auto;
-        padding: 64px 40px 32px;
-      }
-      h1 {
-        font: 400 clamp(35px, 5vw, 61px) / 1.12 Georgia, serif;
-        letter-spacing: -1.8px;
-        margin: 0 0 16px;
-      }
-      /* Secondary copy: the intro line, card descriptions and the footer. */
-      p {
-        font-size: 14px;
-        line-height: 1.8;
-        margin: 0;
-        color: var(--text-muted);
-      }
-      header {
-        margin-bottom: 40px;
-      }
-      .scenes {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
-      }
-      .card {
-        color: inherit;
-        text-decoration: none;
-        display: block;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        overflow: hidden;
-        background: var(--surface);
-      }
-      .card:hover {
-        border-color: var(--border-strong);
-      }
-      .card:focus-visible {
-        outline: 2px solid var(--focus);
-        outline-offset: 5px;
-      }
-      .image {
-        height: 270px;
-        overflow: hidden;
-      }
-      .image img {
-        height: 100%;
-        width: 100%;
-        object-fit: cover;
-        display: block;
-      }
-      .label {
-        padding: 24px;
-      }
-      .label h2 {
-        font: 400 32px Georgia, serif;
-        margin: 0 0 8px;
-      }
-      footer {
-        margin-top: 32px;
-      }
-      footer a {
-        color: var(--text);
-      }
-      @media (max-width: 700px) {
-        main {
-          padding: 32px 24px;
-        }
-        header {
-          margin-bottom: 32px;
-        }
-        .scenes {
-          grid-template-columns: 1fr;
-        }
-        .image {
-          height: 240px;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="ui/gallery.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <h1>Desktop Habitats</h1>
-        <p>Choose an aquarium.</p>
-      </header>
-      <section class="scenes" aria-label="Choose an environment">
-        <a class="card" href="scenes/riverscape/">
-          <div class="image">
-            <img
-              src="docs/images/riverscape-wide.png"
-              alt="A planted freshwater aquarium with driftwood and a shoal of small fish"
-              width="600"
-              height="320"
-            />
-          </div>
-          <div class="label">
-            <h2>Riverscape</h2>
-            <p>Driftwood, green thickets and a curious shoal. A planted freshwater tank.</p>
-          </div>
-        </a>
-        <a class="card" href="scenes/reefscape/">
-          <div class="image">
-            <img
-              src="docs/images/reefscape-wide.png"
-              alt="Clownfish among an anemone and branching reef corals"
-              width="600"
-              height="320"
-            />
-          </div>
-          <div class="label">
-            <h2>Reefscape</h2>
-            <p>A swaying anemone, clownfish and cleaner shrimp. A saltwater tank.</p>
-          </div>
-        </a>
-      </section>
-      <footer>
-        <p><a href="README.md">Setup and controls</a> for the macOS wallpaper and the browser previews.</p>
-      </footer>
+    <header class="masthead">
+      <h1>Habitats</h1>
+    </header>
+    <main class="gallery" aria-label="Aquariums" aria-roledescription="carousel" aria-describedby="gallery-help" aria-keyshortcuts="ArrowLeft ArrowRight">
+      <p class="sr-only" id="gallery-help">Swipe, select the next preview, or use the left and right arrow keys to choose an aquarium. Open the selected image or name to enter.</p>
+      <p class="sr-only" id="gallery-status" role="status" aria-live="polite" aria-atomic="true">Riverscape</p>
+      <a draggable="false" class="portal river is-active" id="river" href="scenes/riverscape/" aria-label="Open Riverscape">
+        <div class="portal-image">
+          <span class="preview-status" hidden>Preview unavailable</span>
+          <img draggable="false" src="docs/images/riverscape-wide.png" alt="Fish swimming through green rivergrass and driftwood" width="1440" height="750" fetchpriority="high" />
+        </div>
+        <div class="portal-caption">
+          <h2>Riverscape<span class="enter" aria-hidden="true">↗</span></h2>
+        </div>
+      </a>
+      <a draggable="false" class="portal reef" id="reef" role="button" href="scenes/reefscape/" aria-label="Preview Reefscape">
+        <div class="portal-image">
+          <span class="preview-status" hidden>Preview unavailable</span>
+          <img draggable="false" src="docs/images/reefscape-wide.png" alt="A coral reef with clownfish, anemones and branching corals" width="1440" height="750" />
+        </div>
+        <div class="portal-caption">
+          <h2>Reefscape<span class="enter" aria-hidden="true">↗</span></h2>
+        </div>
+      </a>
     </main>
+    <script type="module" src="ui/gallery.js"></script>
   </body>
 </html>

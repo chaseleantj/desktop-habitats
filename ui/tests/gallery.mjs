@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../gallery.js', import.meta.url), 'utf8');
-function setup() {
+function setup(reduceMotion = false) {
+  const frames = new Map();
+  const timers = new Map();
+  let nextId = 0;
   let now = 0;
   const handlers = {};
   const classes = new Set();
@@ -22,12 +25,27 @@ function setup() {
     setPointerCapture() {}, hasPointerCapture: () => false,
   };
   const context = vm.createContext({
-    document: { querySelector: selector => selector === '.gallery' ? gallery : {}, addEventListener() {} },
-    matchMedia: () => ({ matches: false }), performance: { now: () => now },
-    requestAnimationFrame: () => 1, cancelAnimationFrame() {}, setTimeout: () => 1, clearTimeout() {},
+    document: { querySelector: selector => selector === '.gallery' ? gallery : {}, addEventListener: (name, fn) => { handlers[name] = fn; } },
+    matchMedia: () => ({ matches: reduceMotion }), performance: { now: () => now },
+    requestAnimationFrame: fn => { frames.set(++nextId, fn); return nextId; },
+    cancelAnimationFrame: id => frames.delete(id),
+    setTimeout: (fn, delay) => { timers.set(++nextId, { fn, time: now + delay }); return nextId; },
+    clearTimeout: id => timers.delete(id),
   });
   vm.runInContext(source, context);
-  return { handlers, classes, advance: ms => { now += ms; }, read: code => vm.runInContext(code, context) };
+  return {
+    handlers, classes, portals, advance: ms => { now += ms; },
+    tick(ms = 16) {
+      now += ms;
+      for (const [id, timer] of timers) {
+        if (timer.time <= now) { timers.delete(id); timer.fn(); }
+      }
+      const pending = [...frames];
+      frames.clear();
+      for (const [, frame] of pending) frame(now);
+    },
+    read: code => vm.runInContext(code, context),
+  };
 }
 const wheelEvent = (deltaX, deltaY) => ({ deltaX, deltaY, deltaMode: 0, preventDefault() {} });
 {
@@ -35,7 +53,7 @@ const wheelEvent = (deltaX, deltaY) => ({ deltaX, deltaY, deltaMode: 0, preventD
   app.handlers.wheel(wheelEvent(8, -7));
   app.advance(20);
   app.handlers.wheel(wheelEvent(6, -9));
-  assert(Math.abs(app.read('position') - 14 / 650) < 1e-12, 'diagonal noise must not switch axes or reverse motion');
+  assert(Math.abs(app.read('wheel.target') - 14 / 650) < 1e-12, 'diagonal noise must not switch axes or reverse motion');
   assert(app.classes.has('is-moving'), 'hover is suppressed throughout the gesture');
 }
 {
@@ -66,4 +84,123 @@ const wheelEvent = (deltaX, deltaY) => ({ deltaX, deltaY, deltaMode: 0, preventD
   assert.equal(app.read('pointer'), undefined);
   assert.equal(app.classes.has('is-dragging'), false);
 }
-console.log('PASS: gallery axis lock, distance intent, flick velocity, stale velocity and cancellation');
+{
+  const app = setup();
+  app.read('snap(1)');
+  assert.equal(app.read('position'), 0, 'selection does not jump before the first frame');
+  app.tick(16);
+  assert(app.read('position') > 0 && app.read('position') < 0.02, 'resting navigation accelerates gently');
+  app.tick(164);
+  assert(app.read('position') < 0.7, 'release is not compressed into the previous 180 ms snap');
+  const position = app.read('position');
+  const speed = app.read('velocity');
+  app.read('snap(-1)');
+  assert.equal(app.read('position'), position, 'retargeting preserves visible position');
+  assert.equal(app.read('velocity'), speed, 'retargeting preserves speed');
+  for (let i = 0; i < 100; i++) app.tick();
+  assert.equal(app.read('position'), -1, 'interrupted motion reaches the latest destination');
+  assert.equal(app.classes.has('is-moving'), false);
+}
+{
+  const app = setup();
+  for (let i = 0; i < 20; i++) {
+    app.handlers.wheel(wheelEvent(8, 0));
+    app.tick(16);
+  }
+  assert(app.read('position') < app.read('wheel.target'), 'wheel samples are smoothed instead of jumping');
+  app.tick(120);
+  assert.equal(app.read('wheel'), undefined, 'wheel idle releases the gesture');
+  assert.equal(app.read('destination'), 1, 'slow intentional scroll completes to the next card');
+  assert(app.read('position') < 0.8, 'wheel release retains a visible completion phase');
+  for (let i = 0; i < 100; i++) app.tick();
+  assert.equal(app.read('position'), 1);
+}
+{
+  const app = setup();
+  app.handlers.pointerdown({ isPrimary: true, button: 0, pointerId: 1, clientX: 300, clientY: 100 });
+  app.advance(80);
+  app.handlers.pointermove({ pointerId: 1, clientX: 170, clientY: 100 });
+  const position = app.read('position');
+  const speed = app.read('velocity');
+  app.handlers.pointerup({ pointerId: 1, type: 'pointerup' });
+  assert.equal(app.read('position'), position, 'pointer release preserves position');
+  assert.equal(app.read('velocity'), speed, 'pointer release carries the hand speed into settling');
+  app.tick();
+  assert(app.read('position') > position);
+  for (let i = 0; i < 100; i++) app.tick();
+  assert.equal(app.read('position'), 1);
+}
+{
+  const app = setup(true);
+  app.read('snap(1)');
+  assert.equal(app.read('position'), 1);
+  assert.equal(app.read('animation'), undefined, 'reduced motion does not schedule settling');
+}
+{
+  const app = setup();
+  app.handlers.keydown({ key: 'ArrowRight', preventDefault() {} });
+  assert.equal(app.read('destination'), 1, 'keyboard uses the same motion destination');
+  app.read('select(0)');
+  assert.equal(app.read('destination'), 0, 'card selection can retarget the same motion loop');
+}
+{
+  const app = setup();
+  app.handlers.wheel(wheelEvent(180, 0));
+  app.tick(16);
+  for (const delta of [50, 30, 15, 8, 3, 1, 0.3]) {
+    app.handlers.wheel(wheelEvent(delta, 0));
+    app.tick(32);
+    assert(app.read('wheel'), 'momentum tail remains part of the original gesture');
+    assert(app.read('velocity') >= 0, 'a decaying wheel tail does not reverse motion');
+  }
+  app.tick(120);
+  for (let i = 0; i < 100; i++) app.tick();
+  assert.equal(app.read('position'), 1, 'a momentum tail commits one card');
+}
+{
+  const app = setup();
+  app.read('snap(1)');
+  app.tick(100);
+  let prevented = false;
+  const position = app.read('position');
+  app.handlers.click({
+    target: { closest: () => app.portals[0] }, detail: 1,
+    preventDefault() { prevented = true; }, stopPropagation() {},
+  });
+  assert(prevented, 'a moving card click selects without accidentally opening its scene');
+  assert.equal(app.read('destination'), 0, 'clicking during motion retargets the carousel');
+  assert.equal(app.read('position'), position, 'click interruption does not jump');
+}
+{
+  const app = setup();
+  app.read('snap(1)');
+  app.tick(100);
+  const position = app.read('position');
+  const speed = app.read('velocity');
+  app.handlers.pointerdown({ isPrimary: true, button: 0, pointerId: 1, clientX: 300, clientY: 100 });
+  assert(app.read('animation'), 'a press alone does not interrupt settling');
+  app.handlers.pointerup({ pointerId: 1, type: 'pointerup' });
+  assert.equal(app.read('position'), position);
+  assert.equal(app.read('velocity'), speed, 'a click release does not reset settling velocity');
+  // The press may begin while moving and finish after motion has settled.
+  for (let i = 0; i < 100; i++) app.tick();
+  let prevented = false;
+  app.handlers.click({
+    target: { closest: () => app.portals[1] }, detail: 1,
+    preventDefault() { prevented = true; }, stopPropagation() {},
+  });
+  assert(prevented, 'a press begun in motion cannot accidentally navigate after settling');
+}
+{
+  const app = setup();
+  app.read('position = 0.8; velocity = 25; snap(1)');
+  for (let i = 0; i < 100; i++) {
+    app.tick();
+    assert(app.read('position') <= 1, 'an extreme flick stops at its selected card without overshooting');
+  }
+  assert.equal(app.read('position'), 1);
+  app.read('velocity = 25; snap(1)');
+  app.tick();
+  assert.equal(app.read('position'), 1, 'releasing at the destination does not push beyond it');
+}
+console.log('PASS: gallery axis lock, intent, velocity continuity, gentle completion, interruption, reduced motion and cancellation');

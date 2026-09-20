@@ -5,7 +5,10 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const names = portals.map(portal => portal.querySelector('h2').firstChild.textContent);
 const DRAG_THRESHOLD = 10;
 const WHEEL_IDLE_MS = 120;
-const SNAP_DURATION_MS = 180;
+const TRACKING_FREQUENCY = 28;
+const SETTLE_FREQUENCY = 9;
+const REST_DISTANCE = 0.0005;
+const REST_SPEED = 0.005;
 const INTENT_DISTANCE = 0.18;
 const VELOCITY_WINDOW_MS = 100;
 const PROJECTION_MS = 140;
@@ -15,9 +18,12 @@ const nearest = value => Math.sign(value) * Math.round(Math.abs(value));
 const stepWidth = () => portals[0].offsetWidth * 0.65;
 let position = 0;
 let animation;
+let velocity = 0;
+let destination = 0;
 let wheel;
 let pointer;
 let suppressClick = false;
+let clickDuringMotion = false;
 
 function render() {
   for (const [index, portal] of portals.entries()) {
@@ -47,19 +53,21 @@ function announce() {
 function gesture(origin) {
   return { origin, samples: [{ position, time: performance.now() }] };
 }
-function sample(input) {
+function sample(input, value = position) {
   const now = performance.now();
-  input.samples.push({ position, time: now });
+  input.samples.push({ position: value, time: now });
   while (input.samples.length > 2 && input.samples[0].time < now - VELOCITY_WINDOW_MS) input.samples.shift();
 }
-function releaseTarget(input, idle = 0) {
+function releaseVelocity(input, idle = 0) {
   const first = input.samples[0];
   const last = input.samples.at(-1);
   const elapsed = last.time - first.time;
-  const velocity = elapsed > 0 && performance.now() - last.time < VELOCITY_WINDOW_MS + idle
+  return elapsed > 0 && performance.now() - last.time < VELOCITY_WINDOW_MS + idle
     ? (last.position - first.position) / elapsed : 0;
-  const travel = position - input.origin;
-  const intent = travel + velocity * PROJECTION_MS;
+}
+function releaseTarget(input, idle = 0) {
+  const travel = input.samples.at(-1).position - input.origin;
+  const intent = travel + releaseVelocity(input, idle) * PROJECTION_MS;
   const origin = nearest(input.origin);
   return Math.abs(intent) >= INTENT_DISTANCE ? origin + Math.sign(intent) : origin;
 }
@@ -72,32 +80,55 @@ function stopWheel() {
   clearTimeout(wheel?.idle);
   wheel = undefined;
 }
-function snap(target) {
-  stopAnimation();
-  stopWheel();
-  const start = position;
-  const distance = target - start;
-  const duration = SNAP_DURATION_MS;
-  if (reducedMotion.matches || Math.abs(distance) < 0.0001) {
+function moveTo(target) {
+  destination = target;
+  if (reducedMotion.matches) {
+    stopAnimation();
     position = target;
+    velocity = 0;
     render();
-    announce();
+    if (!wheel) announce();
     return;
   }
   gallery.classList.add('is-moving');
-  const started = performance.now();
+  if (animation) return;
+  let previous = performance.now();
   function frame(now) {
-    const progress = clamp((now - started) / duration, 0, 1);
-    position = start + distance * (1 - (1 - progress) ** 3);
+    const dt = (now - previous) / 1000;
+    previous = now;
+    const frequency = wheel ? TRACKING_FREQUENCY : SETTLE_FREQUENCY;
+    // Exact critically damped spring: changing the target preserves position and speed.
+    const offset = position - destination;
+    const impulse = velocity + frequency * offset;
+    const decay = Math.exp(-frequency * dt);
+    position = destination + (offset + impulse * dt) * decay;
+    velocity = (velocity - frequency * impulse * dt) * decay;
+    const resting = Math.abs(position - destination) < REST_DISTANCE && Math.abs(velocity) < REST_SPEED;
+    if (resting) {
+      position = destination;
+      velocity = 0;
+    }
     render();
-    if (progress < 1) animation = requestAnimationFrame(frame);
+    if (!resting) animation = requestAnimationFrame(frame);
     else {
       animation = undefined;
-      gallery.classList.remove('is-moving');
-      announce();
+      if (!wheel) {
+        gallery.classList.remove('is-moving');
+        announce();
+      }
     }
   }
   animation = requestAnimationFrame(frame);
+}
+function snap(target) {
+  stopWheel();
+  // Faster releases would carry the critical spring beyond the intended card.
+  const distance = target - position;
+  if (distance === 0) velocity = 0;
+  else if (velocity * distance > 0) {
+    velocity = Math.sign(velocity) * Math.min(Math.abs(velocity), SETTLE_FREQUENCY * Math.abs(distance));
+  }
+  moveTo(target);
 }
 function select(index) {
   const front = nearest(position);
@@ -120,22 +151,21 @@ gallery.addEventListener('wheel', event => {
   event.preventDefault();
   if (!wheel) {
     stopAnimation();
-    wheel = { ...gesture(position), axis: Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'deltaX' : 'deltaY', idle: undefined };
+    wheel = { ...gesture(position), target: position, axis: Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'deltaX' : 'deltaY', idle: undefined };
     gallery.classList.add('is-moving');
   }
   const delta = event[wheel.axis];
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? gallery.clientHeight : 1;
-  position = clamp(position + delta * unit / stepWidth(), wheel.origin - 1, wheel.origin + 1);
-  sample(wheel);
-  render();
+  wheel.target = clamp(wheel.target + delta * unit / stepWidth(), wheel.origin - 1, wheel.origin + 1);
+  sample(wheel, wheel.target);
+  moveTo(wheel.target);
   clearTimeout(wheel.idle);
   wheel.idle = setTimeout(() => snap(releaseTarget(wheel, WHEEL_IDLE_MS)), WHEEL_IDLE_MS);
 }, { passive: false });
 
 gallery.addEventListener('pointerdown', event => {
   if (!event.isPrimary || event.button !== 0) return;
-  stopAnimation();
-  stopWheel();
+  clickDuringMotion = Boolean(animation || wheel);
   suppressClick = false;
   pointer = { ...gesture(position), id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false };
 });
@@ -144,16 +174,28 @@ gallery.addEventListener('pointermove', event => {
   const dx = event.clientX - pointer.x;
   const dy = event.clientY - pointer.y;
   if (!pointer.dragged && (Math.abs(dx) < DRAG_THRESHOLD || Math.abs(dx) <= Math.abs(dy))) return;
-  pointer.dragged = true;
+  if (!pointer.dragged) {
+    pointer.origin = position;
+    pointer.samples = [{ position, time: pointer.samples[0].time }];
+    stopAnimation();
+    stopWheel();
+    pointer.dragged = true;
+  }
   gallery.setPointerCapture(event.pointerId);
   gallery.classList.add('is-dragging', 'is-moving');
   position = pointer.origin + clamp(-dx / stepWidth(), -1, 1);
   sample(pointer);
+  velocity = releaseVelocity(pointer) * 1000;
   render();
 });
 function endDrag(event) {
   if (!pointer || pointer.id !== event.pointerId) return;
-  const target = event.type === 'pointercancel' || !pointer.dragged ? nearest(pointer.origin) : releaseTarget(pointer);
+  if (!pointer.dragged) {
+    pointer = undefined;
+    return;
+  }
+  const target = event.type !== 'pointerup' ? nearest(pointer.origin) : releaseTarget(pointer);
+  velocity = pointer.dragged && event.type === 'pointerup' ? releaseVelocity(pointer) * 1000 : 0;
   suppressClick = pointer.dragged;
   pointer = undefined;
   gallery.classList.remove('is-dragging');
@@ -162,18 +204,20 @@ function endDrag(event) {
 }
 gallery.addEventListener('pointerup', endDrag);
 gallery.addEventListener('pointercancel', endDrag);
+gallery.addEventListener('lostpointercapture', endDrag);
 gallery.addEventListener('dragstart', event => event.preventDefault());
 gallery.addEventListener('click', event => {
   const portal = event.target.closest('.portal');
   if (!portal) return;
-  if ((suppressClick && event.detail !== 0) || animation || wheel) {
+  if (suppressClick && event.detail !== 0) {
     event.preventDefault();
     event.stopPropagation();
-  } else if (portals.indexOf(portal) !== wrap(nearest(position))) {
+  } else if (clickDuringMotion || animation || wheel || portals.indexOf(portal) !== wrap(nearest(position))) {
     event.preventDefault();
     select(portals.indexOf(portal));
   }
   suppressClick = false;
+  clickDuringMotion = false;
 }, true);
 
 render();

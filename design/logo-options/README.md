@@ -1,15 +1,21 @@
 # Desktop Habitats logo options
 
-Open `index.html` to compare the three designs at logo and favicon sizes.
+Open `index.html` to compare three custom silhouettes, with their favicon variants at 16, 24, and 32 pixels.
 
-- **Current:** a desktop window containing a wave.
-- **Reed:** three aquatic leaves.
-- **Tideline:** an arched window with a sun and waterline.
+- **Veiltail:** an ornamental fish with a sweeping fan of long fins. Its asymmetric silhouette draws on the movement of the aquarium itself.
+- **Seahorse:** a crowned aquatic creature with a curled tail and radiating dorsal fin.
+- **Coral H:** an H with branching arms and a flowing crossbar, combining a letterform with coral structure.
 
-Each direction has a transparent, single-color logo and a favicon with a dark green background. All files are self-contained SVGs with a 64 × 64 view box. The comparison includes 16, 24, and 32 pixel favicon previews and reversed marks on a light background.
+The directions take their cue from the strong negative space of Chase HQ's H and the expressive silhouette of Breeze's seed. They replace the initial window, reed, and landscape concepts.
 
-These are alternatives for selection, not installed app assets. The app retains its circle placeholder.
+Each direction has a transparent SVG logo and a separately drawn favicon variant. Favicons use fewer, heavier details and more open gaps. The files use a 256 × 256 view box and a single color.
+
+These are alternatives for selection. The app retains its circle placeholder.
 
 ## Visual review
 
-One independent critic round scored the first version 34/40 (FAIL against the skill's 9/10-per-criterion threshold). The review identified Reed's narrow gaps at 16 pixels and Tideline's compartment-like silhouette. Both were revised: Reed has wider open channels; Tideline now has one flowing waterline beneath the sun. The final rendering was checked by the builder and is saved in `preview.png`. These revisions have not had a second independent review. The original report and captures remain in `review-round-1/`.
+One fresh independent review of these directions scored 31/40 (FAIL against the skill's 9/10-per-criterion threshold). The report is in `review-bold-round-1/report.md`; captures there show the version reviewed.
+
+The confirmed findings were addressed: Veiltail's favicon has a larger body and eye; Seahorse has fewer competing upper-body details; Coral H has uneven, rounded branches rather than pointed antler forms. The final rendering is saved in `preview.png`. These revisions were checked by the builder but have not had a second independent review. The original generic concepts' review remains in `review-round-1/` for history.
+
+Favicon artwork adapts to browser color scheme: dark green on light surfaces, cream on dark surfaces.

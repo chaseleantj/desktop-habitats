@@ -11,6 +11,7 @@ const types = {
   ".css": "text/css",
   ".jpg": "image/jpeg",
   ".png": "image/png",
+  ".svg": "image/svg+xml",
   ".json": "application/json",
   ".md": "text/plain",
 };

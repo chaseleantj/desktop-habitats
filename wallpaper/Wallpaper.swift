@@ -76,12 +76,21 @@ final class SceneHandler: NSObject, WKURLSchemeHandler {
   func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
-/// Puts whatever the page complains about into the agent's log.
+/// Puts whatever the page complains about into the agent's log. A page that has
+/// started listening also says so ("habitat-ready"): navigation can finish before the
+/// page's module defines its host callbacks, losing the first send with no later rate
+/// change to repair it, so the host resends its state on ready.
 final class Reporter: NSObject, WKScriptMessageHandler {
   static let shared = Reporter()
+  /// Set once by the controller; called whenever a page reports it is listening.
+  var onReady: (() -> Void)?
   func userContentController(
     _ controller: WKUserContentController, didReceive message: WKScriptMessage
   ) {
+    if let text = message.body as? String, text == "habitat-ready" {
+      onReady?()
+      return
+    }
     NSLog("desktop-habitats page: \(message.body)")
   }
 }
@@ -146,8 +155,11 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
           """,
         injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
-    view = WKWebView(frame: screen.frame, configuration: settings)
+    // Registered before the view exists: the view takes its configuration at
+    // creation, so a later add would leave the page with nobody to report to.
     settings.userContentController.add(Reporter.shared, name: "report")
+
+    view = WKWebView(frame: screen.frame, configuration: settings)
     // WebKit stops a page whose window it thinks is covered, and AppKit never reports a
     // background agent's window as visible, so the scene would never start. This asks
     // WebKit not to make that call; the agent works out what is covered instead.
@@ -220,6 +232,13 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
       typeof habitatPower === 'function' && habitatPower(\(battery ? "true" : "false"));
       typeof habitatRate === 'function' && habitatRate(\(rate));
       """)
+  }
+
+  /// The current state even when nothing changed. The first send can race the page's
+  /// module, and a display whose rate then never changes would otherwise keep its
+  /// first static frame forever.
+  func resync() {
+    send()
   }
 
   /// A pinch of food on the water, asked for from the menu rather than by clicking. The
@@ -327,6 +346,11 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   func applicationDidFinishLaunching(_ note: Notification) {
     Controller.shared = self
+    // A page announces when its host callbacks exist. Resend then: didFinish may have
+    // fired first and lost the only send a stable display was ever going to get.
+    Reporter.shared.onReady = { [weak self] in
+      DispatchQueue.main.async { self?.resyncAll() }
+    }
     build()
     addMenu()
 
@@ -468,6 +492,13 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
       timer.tolerance = 0.25
       exposureTimer = timer
     }
+  }
+
+  /// The current state to every screen, for pages that just started listening.
+  /// Broadcast: readiness arrives without identifying its sender, and this runs once
+  /// per page load rather than every second, so the send-on-change saving stands.
+  private func resyncAll() {
+    for screen in screens { screen.resync() }
   }
 
   /// How much of a screen ordinary windows leave uncovered, from none to all of it.

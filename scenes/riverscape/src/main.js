@@ -54,6 +54,15 @@ let sprinkle = null;
 window.habitatFeed = () => {
   if (sprinkle && loop?.state.running) sprinkle();
 };
+// Navigation can finish before this module runs, so the host's first rate and power
+// send may land before these callbacks exist, with no later change to repair a display
+// whose rate then never changes. Announce listening so the host resends; there is no
+// host in a plain browser tab.
+try {
+  window.webkit?.messageHandlers?.report?.postMessage("habitat-ready");
+} catch {
+  /* no host listening */
+}
 
 
 

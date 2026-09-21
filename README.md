@@ -1,10 +1,10 @@
 # Desktop Habitats
 
-![Riverscape, a planted freshwater aquarium](docs/images/riverscape-wide.png)
+[![Desktop Habitats aquarium demo](docs/images/demo.gif)](docs/videos/demo.mp4)
 
 Have you always wanted an aquarium? Now you can have it, right on your desktop :)
 
-The fish react to your cursor and compete for food, while the plants sway in a slow current. There are two environments: **Riverscape**, a planted freshwater aquarium, and **Reefscape**, a saltwater tank with three clownfish, a host anemone, small reef fish and two cleaner shrimp.
+The fish react to your cursor and compete for food, while the plants sway in a slow current. There are two environments: **Riverscape**, a planted freshwater aquarium, and **Reefscape**, a saltwater tank.
 
 ![Reefscape, a saltwater tank with clownfish around an anemone](docs/images/reefscape-wide.png)
 
@@ -125,40 +125,6 @@ Open [the local preview](http://127.0.0.1:8080). There is no `npm install` step;
 
 Reduce Motion starts the preview paused. Serve the page over HTTP; opening `index.html` directly will not load its JavaScript modules. Any static server also works, such as `python3 -m http.server 8080 --bind 127.0.0.1` if you have Python installed.
 
-## Development
-
-In Riverscape, one water model drives the plants, drifting particles, fish and underwater lighting. Fish alternate between swimming and coasting, explore the tank, avoid neighbours and compete for pellets. Reefscape runs a fixed-step simulation of its fish and shrimp, with GPU-animated anemone tentacles, merged static coral geometry and a cached hardscape shadow map. Both scenes use raster rendering with custom GLSL shaders, shadows and depth effects.
-
-Each scene owns its organisms, lighting and materials. Both use `scenes/shared/` for frame scheduling, quality settings, controls, random generation, postprocessing setup and diagnostics. The root page is a spatial gallery and the Mac app has an Environment menu. Reefscape reads the sand and rock maps from Riverscape's assets, so both scene directories ship together.
-
-| Files | Purpose |
-| --- | --- |
-| `scenes/riverscape/index.html`, `wallpaper.html`, `style.css` | Riverscape's preview and wallpaper layouts |
-| `scenes/riverscape/src/` | Fish, feeding, plants, water, terrain and rendering |
-| `scenes/riverscape/assets/` | Rock, wood and sand textures |
-| `scenes/riverscape/tests/` | Riverscape's headless simulation checks |
-| `scenes/reefscape/` | Reefscape's preview, wallpaper page, organisms, simulation, baked assets and tests |
-| `scenes/shared/` | Shared scene startup, controls, rendering policy and runtime helpers |
-| `ui/` | Gallery presentation and shared interface styles |
-| `tools/` | Python scripts that rebuild Reefscape's baked rock mesh and pore maps |
-| `wallpaper/` | Mac app and install/uninstall scripts |
-| `vendor/` | Bundled Three.js library and license |
-| `index.html`, `serve.mjs` | Environment chooser and local server |
-
-Run the checks with Node.js:
-
-```sh
-npm run check
-npm test
-```
-
-These check JavaScript syntax; simulate swimming, spacing, startle responses and feeding; verify render budgets and frame pacing at 60/120 Hz; and confirm that rear-grass thinning leaves the foreground geometry and downstream random sequence unchanged. They also check that paused/hidden scenes have no scheduled render callbacks. Reefscape's tests run three minutes of simulation with deterministic seeding, keep the clownfish near their host, bound the food and check the baked rock mesh and fish geometry. They do not measure Mac battery use.
-
-The default rendering profile is `balanced`. In Riverscape, append `?still=1` for a paused frame, or `?quality=reference&still=1` for its original density and rendering budgets. Reefscape uses `?capture=1` for a paused, control-free frame. Append `diagnostics=1` to either scene to enable the local `habitatBenchmark()` function. Nothing is uploaded.
-
-Startup failures show a reload link; error details appear in the developer console. Wallpaper errors and frame-rate changes go to `/tmp/desktop-habitats.log`. Sending `SIGUSR1` to the Desktop Habitats process saves a snapshot of its first tank to `/tmp/desktop-habitats.png`.
-
-If you change the app's bundle ID, update `com.chaselean.desktop-habitats` in `wallpaper/install.sh`, `wallpaper/uninstall.sh` and `wallpaper/Info.plist` together.
 
 ## Credits and license
 

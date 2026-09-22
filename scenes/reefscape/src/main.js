@@ -11,7 +11,7 @@ import { createParticles } from './particles.js';
 import { ReefSimulation, FIXED_STEP } from './simulation.js';
 import { views } from './views.js';
 import { createFrameLoop } from '../../shared/frame-loop.js';
-import { waterTime, LAMP } from './water.js';
+import { waterTime, LAMP, LAMP_RANGE } from './water.js';
 
 const canvas=document.querySelector('#scene'),habitat=document.querySelector('#habitat'),loading=document.querySelector('#loading');
 const params=new URLSearchParams(location.search),isHost=document.documentElement.dataset.motion==='host';
@@ -35,17 +35,21 @@ async function start(){
   renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
   renderer.shadowMap.enabled=true;renderer.shadowMap.needsUpdate=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.info.autoReset=false;
   const scene=new THREE.Scene();scene.background=new THREE.Color('#04101d');
-  // Reef LEDs: a cool white key with a violet actinic wash from above. Warm tones come only
-  // from the animals and coral tissue themselves. The ground half of the hemisphere stands
-  // in for the bounce off the bright aragonite bed, so the shaded side of a coral branch
-  // reads as tissue in shadow rather than a black stick. The sky half is the water column
-  // itself, deep indigo, and kept low: what the lamp does not reach stays dark.
-  scene.add(new THREE.HemisphereLight('#5a63c8','#4d4736',.46));
-  const sun=new THREE.DirectionalLight('#f6f0e0',3.9);sun.position.set(LAMP.x,LAMP.y,LAMP.z).multiplyScalar(14.2);sun.target.position.set(0,0,0);sun.castShadow=true;
+  // Reef LEDs: a warm-white key from overhead, so the tops of rock, coral and fish catch
+  // the light and everything under an edge falls into the water's blue, with a violet
+  // actinic wash from above. The ground half of the hemisphere stands in for the bounce off
+  // the bright aragonite bed, so the shaded side of a coral branch reads as tissue in shadow
+  // rather than a black stick. The sky half is the water column itself, deep blue, and kept
+  // low: what the lamp does not reach stays dark.
+  scene.add(new THREE.HemisphereLight('#3c56c0','#4a4636',.42));
+  const sun=new THREE.DirectionalLight('#ffdfba',4.3);sun.position.set(LAMP.x,LAMP.y,LAMP.z).multiplyScalar(LAMP_RANGE);sun.target.position.set(0,0,0);sun.castShadow=true;
   sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-12,right:12,top:10,bottom:-9,near:1,far:43});sun.shadow.bias=-.0007;sun.shadow.normalBias=.018;sun.shadow.radius=2;sun.shadow.intensity=.86;
   scene.add(sun,sun.target);
   const actinic=new THREE.DirectionalLight('#4f6dff',.78);actinic.position.set(3,12,-2);scene.add(actinic);
-  const bounce=new THREE.DirectionalLight('#7f8fd0',.22);bounce.position.set(3,6,8);scene.add(bounce);
+  const bounce=new THREE.DirectionalLight('#7f8fd0',.18);bounce.position.set(3,6,8);scene.add(bounce);
+  // The lamp's light scattered forward by the water behind a subject comes back toward the
+  // camera from the far side: a cool rim on the backs of fish and along the crests of rock.
+  const rim=new THREE.DirectionalLight('#7fc4ff',1.1);rim.position.set(1.5,6,-9);scene.add(rim);
   // The key light's shadow map, read by the motes so they go dark where the lamp is
   // blocked. The texture only exists once the first beauty pass has drawn it, so render()
   // fills it in.
@@ -68,7 +72,7 @@ async function start(){
   function applyView(name){const v=views[name];view=name;camera.position.set(...v.position);camera.lookAt(...v.target);camera.fov=v.fov;camera.updateProjectionMatrix();syncPostCamera();}
   // The beauty pass lands in an HDR target; a short screen-space pass adds contact occlusion
   // where rock meets sand and coral meets rock, then a light vignette, before tone mapping.
-  const { target, post, postScene, postCamera } = createComposite(camera);
+  const { target, post, postScene, postCamera } = createComposite(camera,shadow);
   applyView(view);
   const envData=new Uint8Array(128*64*4);
   for(let y=0;y<64;y++)for(let x=0;x<128;x++){

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { merge, ellipsoid, tint } from './geometry.js';
 import { randomGenerator, groundHeight } from './math.js';
-import { underwater, causticGLSL, extinctionGLSL, waterTime } from './water.js';
+import { underwater, extinctionGLSL, inscatterGLSL, surfaceGLSL, ABSORB, SURFACE, waterTime } from './water.js';
 import { ROCKS, HOST, STATIONS, TANK } from './layout.js';
 export {ROCKS,HOST,STATIONS};
 let surfaceField=null,surfaceW=0,surfaceH=0;
@@ -91,32 +91,31 @@ export async function createTerrain(scene){
   const rubbleMesh=new THREE.Mesh(merge(rubble),underwater(new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),{key:'rubble'}));rubbleMesh.receiveShadow=true;scene.add(rubbleMesh);
   return {obstacles:ROCKS,host:HOST,stations:STATIONS,rockSurface:rocks};
 }
-/** The tank's back wall, seen from inside the water: deep indigo at the sand, lifting a
- *  little toward the lamps, and seen through the whole depth of the tank, so it takes the
- *  same veil every rear rock does. Nothing of the enclosure itself (glass, rim, pumps) is
- *  modelled. A flat ramp is what makes a tank read as a painted backdrop, so the wall
- *  carries the same ripple the bed does, the bars of the LED array above it, and a slow
- *  large-scale mottle — all of it moving, none of it resolvable as a pattern. */
+/** The tank's back wall, seen from inside the water. A real reef tank's rear pane is lost
+ *  in the blue, so the wall is painted as the water carrying on past it: the same glow and
+ *  shafts the post pass sums in front of it, integrated over a further stretch of water,
+ *  so the frame fades into depth instead of stopping at a painted panel. Nothing of the
+ *  enclosure itself (glass, rim, pumps) is modelled. */
+const BEYOND=14,SURFACE_REACH=8;
 export function createBackdrop(scene){
   const backMat=new THREE.ShaderMaterial({uniforms:{reefTime:{value:0}},
     vertexShader:`varying vec3 p;
       void main(){p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
     fragmentShader:`varying vec3 p;uniform float reefTime;
-      ${causticGLSL}${extinctionGLSL}
+      ${extinctionGLSL}${inscatterGLSL}${surfaceGLSL}
       void main(){
-        float top=smoothstep(-3.5,9.5,p.y);
-        float wash=.55+.45*(exp(-pow((p.x+3.6)/6.,2.))+exp(-pow((p.x-4.4)/5.5,2.)));
-        vec3 col=mix(vec3(.006,.009,.034),vec3(.010,.020,.082)*wash,top);
-        col+=vec3(.006,.010,.024)*exp(-pow((p.y+.35)/1.5,2.));
-        // The ripple that draws glitter on the bed also plays across the wall, softened by
-        // the water it has crossed to get there.
-        float ripple=reefIrradiance(vec3(p.x,p.y,-4.1),reefTime).g-.86;
-        col+=vec3(.006,.012,.028)*clamp(ripple,-.5,1.1)*smoothstep(-1.,5.,p.y);
-        // The LED array reads on the wall as soft vertical bars that drift, not as a ramp.
-        float bars=sin(p.x*.62+.5*sin(p.y*.21+reefTime*.045))*sin(p.x*.23-reefTime*.031+1.4);
-        col+=vec3(.003,.005,.011)*max(0.,bars)*smoothstep(-.5,7.,p.y);
-        // Slow blotching so the gradient is never mathematically smooth.
-        col*=.93+.14*sin(p.x*.37+1.9*sin(p.y*.29+reefTime*.021))*sin(p.y*.24-reefTime*.017);
+        // A ray climbing steeply enough meets the underside of the surface a short way past
+        // the wall, and that is the faint shimmer along the top of frame. Farther off the
+        // surface is lost in the water like everything else, so it fades out before it can
+        // draw a horizon.
+        vec3 absorb=vec3(${ABSORB.join(',')}),dir=normalize(p-cameraPosition);
+        vec3 col=reefInscatter(p,reefTime,1.)*(1.-exp(-absorb*${BEYOND}.))/absorb;
+        float reach=dir.y>0.?(${SURFACE.toFixed(3)}-p.y)/dir.y:${BEYOND}.;
+        if(reach<${SURFACE_REACH}.){
+          vec3 veil=exp(-absorb*reach);
+          vec3 under=reefInscatter(p,reefTime,1.)*(1.-veil)/absorb+veil*reefSurfaceUnderside(p+dir*reach,dir,reach,reefTime);
+          col=mix(col,under,smoothstep(${SURFACE_REACH}.,1.,reach));
+        }
         col*=reefTransmittance(reefWaterPath(p,cameraPosition));
         gl_FragColor=vec4(col,1.);
         #include <tonemapping_fragment>

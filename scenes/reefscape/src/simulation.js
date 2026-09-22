@@ -169,12 +169,14 @@ export class ReefSimulation {
     while(f.route.length>1&&f.position.distanceToSquared(f.route[0])<.30)f.route.shift();
     return f.route[0]||goal;
   }
+  // Pellets enter just inside the wide view's top edge, which meets the front of the reef
+  // about 1.2 units below the surface; dropped at the surface they took six seconds to show.
   feed(x=0,z=1) {
     if(this.time-this.lastFeed<1)return 0;
     let count=0;
     for(const pellet of this.food)if(!pellet.active&&count<8){
       pellet.active=true;pellet.age=0;pellet.size=.027+this.random()*.015;
-      pellet.position.set(clamp(x+(this.random()-.5)*1.3,-7,7),TANK.surface-.12-this.random()*.16,z+(this.random()-.5)*.9);
+      pellet.position.set(clamp(x+(this.random()-.5)*1.3,-7,7),TANK.surface-1.35-this.random()*.16,z+(this.random()-.5)*.9);
       pellet.velocity.set(0,-.04,0);count++;
     }
     if(count)this.lastFeed=this.time;return count;

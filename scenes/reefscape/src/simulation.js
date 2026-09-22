@@ -550,9 +550,9 @@ export class ReefSimulation {
       // bursts close up when this animal has something worth reading.
       if((s.burst-=dt)<=0){s.sniff=1-s.sniff;s.burst=s.sniff?1.4+r()*1.6:(1.2+r()*2.8)/(1+s.signal);}
       s.flick+=(s.sniff-s.flick)*(1-Math.exp(-dt*9));
-      // The whole-body rock that goes with the antennal whip: the same two hertz, a couple
-      // of millimetres of lean, and it grows with the signal rather than quickening.
-      if(s.state!=='escape'){s.sway=Math.sin(12.566*s.rhythm)*s.signal;s.curl-=s.curl*(1-Math.exp(-dt*6));}
+      // The whole-body rock that goes with the antennal whip: a slow half-hertz lean that
+      // grows with the signal rather than quickening. At two hertz it read as a shiver.
+      if(s.state!=='escape'){s.sway=Math.sin(3.1416*s.rhythm)*s.signal;s.curl-=s.curl*(1-Math.exp(-dt*6));}
     }
   }
   diagnostics(){

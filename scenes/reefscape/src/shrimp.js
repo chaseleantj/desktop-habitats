@@ -130,9 +130,9 @@ export function createShrimp(scene, simulation) {
           transformed.xy=vec2(.155+arm.x*cos(bend)-arm.y*sin(bend),.075+arm.x*sin(bend)+arm.y*cos(bend));
           transformed.z*=1.-.30*max(0.,bend);
           // The advertisement itself. Caves found L. amboinensis signals by rocking this
-          // white front pair fore and aft at a few hertz — not by swaying its whole body —
-          // and rocks hardest at the big dark clients that are worth the risk of cleaning.
-          transformed.x+=sin(25.13*shrimpGait.w)*.024*shrimpPose.x*fold*(1.-.5*code);
+          // white front pair fore and aft — not by swaying its whole body — and rocks hardest
+          // at the big dark clients that are worth the risk of cleaning.
+          transformed.x+=sin(9.425*shrimpGait.w)*.018*shrimpPose.x*fold*(1.-.5*code);
         }
         // 5 Hz: the mouthparts flicker far faster than anything else the animal does.
         if(code>4.5&&code<5.5)transformed+=vec3(.012,.009,0.)*sin(31.42*shrimpGait.w+side*1.7)*tip;
@@ -151,15 +151,15 @@ export function createShrimp(scene, simulation) {
       begin:`float along=uv.y,side=sign(position.z),tip=along*along,antenna=step(uv.x,.5);
         vec2 flow=reefResponse(modelMatrix[3].xyz,reefTime,.19);
         // The long white antennae are the advertisement, and they are read from across the
-        // tank: whipping them precedes four cleans in five. They lash forward at about two
-        // hertz while the animal is signalling and lie swept back when it is not.
-        float sweep=sin(12.566*shrimpGait.w+side*.9)*shrimpPose.x*antenna;
+        // tank: whipping them precedes four cleans in five. They sweep forward about once a
+        // second while the animal is signalling and lie swept back when it is not.
+        float sweep=sin(6.2832*shrimpGait.w+side*.9)*shrimpPose.x*antenna;
         // An antennule flick is a hard downstroke and a lazy return, roughly one to three —
         // the asymmetry is what traps a discrete parcel of water for the aesthetascs.
         float p=fract(shrimpGait.w*2.),snap=(p<.22?p/.22:1.-(p-.22)/.78)*shrimpPose.y*(1.-antenna);
-        transformed.z+=(sweep*side*.14+flow.y*.20)*tip;
+        transformed.z+=(sweep*side*.09+flow.y*.20)*tip;
         // L. amboinensis taps a client with its antennae before anything else touches it.
-        transformed.y+=(sweep*.11-snap*.11+flow.x*.15+shrimpPose.z*(.30+.12*sin(12.566*shrimpGait.w)))*tip;
+        transformed.y+=(sweep*.11-snap*.11+flow.x*.15+shrimpPose.z*(.30+.12*sin(6.2832*shrimpGait.w)))*tip;
         transformed.x-=(snap*.035+(1.-shrimpPose.x)*.09*antenna+shrimpPose.w*.22)*tip;`}));
     root.add(new THREE.Mesh(merge(antennae),antennaMat));
     scene.add(root);models.push({root,gait,pose,feet});
@@ -171,7 +171,7 @@ export function createShrimp(scene, simulation) {
     // the legs, and reaching for a client lifts the whole front of the animal, so both are
     // rotations of the body rather than offsets bolted onto it.
     tilt.setFromAxisAngle(across,pose.pitch);turn.setFromAxisAngle(up,s.yaw);
-    rock.setFromAxisAngle(ahead,s.sway*.28-pose.roll);rear.setFromAxisAngle(across,s.reach*.26);
+    rock.setFromAxisAngle(ahead,s.sway*.14-pose.roll);rear.setFromAxisAngle(across,s.reach*.26);
     m.root.quaternion.copy(turn).multiply(tilt).multiply(rock);
     // Every one of those rotations turns about the contact patch, the rear one about the rear
     // pair, and the tail flip is the one thing that takes the animal off it.

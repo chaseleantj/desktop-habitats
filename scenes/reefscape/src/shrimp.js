@@ -33,16 +33,18 @@ export function createShrimp(scene, simulation) {
   for(let index=0;index<simulation.shrimp.length;index++) {
     const root=new THREE.Group(),bodyParts=[],legs=[],antennae=[];
     const carapace=sphere([.08,.15,0],[.235,.085,.091],'#d45338');
-    // Broad reflective dorsal stripe down a red carapace, not painted glowing eyes.
-    tint(carapace,p=>new THREE.Color(p.y>.173?(Math.abs(p.z)<.025?'#eae5ce':'#b4543e'):'#bd9a7c'));
+    // Lysmata amboinensis: a scarlet band down each side of the back, split by a narrow
+    // white median stripe, over pale translucent-yellow flanks.
+    tint(carapace,p=>new THREE.Color(Math.abs(p.z)<.019&&p.y>.212?'#f3efe3':p.y>.148?'#b82019':'#dcc39a'));
     bodyParts.push(carapace);
     for(let i=0;i<6;i++){
       const x=-.12-i*.060,y=.13-Math.pow(i/5,2)*.10;
       const g=sphere([x,y,0],[.070-i*.003,.061-i*.004,.069-i*.005],'#c9543f');
-      tint(g,p=>new THREE.Color(Math.abs(p.z)<.022&&p.y>y+.021?'#efe7cc':p.y>y+.022?'#b65e45':p.x<x-.043?'#a78669':'#cfb092'));bodyParts.push(g);
+      tint(g,p=>new THREE.Color(Math.abs(p.z)<.018&&p.y>y+.040?'#f3efe3':p.y>y+.004?'#b82019':p.x<x-.043?'#bba07c':'#dcc39a'));bodyParts.push(g);
     }
-    // Telson + paired uropods; overlap the sixth segment without a gap.
-    for(let side=-1;side<=1;side++)bodyParts.push(sphere([-.50,-.006,side*.069],[.103,.016,.049],side===0?'#d56345':'#eddbb7'));
+    // Telson + paired uropods; overlap the sixth segment without a gap. The fan is red
+    // with white tips on the uropods.
+    for(let side=-1;side<=1;side++){const g=sphere([-.50,-.006,side*.069],[.103,.016,.049],'#b82019');tint(g,p=>new THREE.Color(side&&p.x<-.55?'#f3efe3':'#b82019'));bodyParts.push(g);}
     bodyParts.push(tube([V(.25,.17,0),V(.38,.20,0),V(.42,.24,0)],[.020,.012,.001],6));
     for(const sign of [-1,1]){
       bodyParts.push(tube([V(.22,.19,sign*.045),V(.26,.25,sign*.087)],[.016,.014],6));
@@ -63,10 +65,10 @@ export function createShrimp(scene, simulation) {
         const x=.18-j*.068;
         const [path,radii]=j<2?carried[j]
           :[[V(x,.105,sign*.042),V(x-.06,.06,sign*(.15+j*.010)),foot(j,sign)],[.009,.008,.003]];
-        legs.push(tint(limb(path,radii,j),()=>new THREE.Color(j<2?'#e9cca8':'#e3b597')));
+        legs.push(tint(limb(path,radii,j),()=>new THREE.Color(j<2?'#f1ebdf':'#eadfcc')));
       }
       // Third maxillipeds under the head: the grooming appendages, small and never still.
-      legs.push(tint(limb([V(.14,.075,sign*.040),V(.19,-.005,sign*.062),V(.225,-.075,sign*.050)],[.010,.008,.003],5),()=>new THREE.Color('#e9cca8')));
+      legs.push(tint(limb([V(.14,.075,sign*.040),V(.19,-.005,sign*.062),V(.225,-.075,sign*.050)],[.010,.008,.003],5),()=>new THREE.Color('#f1ebdf')));
       // Five pairs of pleopods under the first five abdominal somites. They are a short
       // fringe tucked against the belly, not a second row of legs, and they read from the
       // side or when the animal is off the rock; their wave is what says it is alive rather
@@ -82,7 +84,7 @@ export function createShrimp(scene, simulation) {
           pts.push(V(.25+s*len*(j===2?.66:.95),.23+s*(.66-j*.23)-.26*s*s,sign*(.075+s*(.30+j*.18))));
           radii.push(.010*(1-s*.86));
         }
-        antennae.push(tint(limb(pts,radii,j),()=>new THREE.Color('#ede4c9')));
+        antennae.push(tint(limb(pts,radii,j),()=>new THREE.Color('#f4f0e6')));
       }
     }
     // One wrapped two-second clock drives every small rhythm on the animal, so their rates

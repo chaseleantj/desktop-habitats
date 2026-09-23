@@ -165,7 +165,9 @@ final class Wallpaper: NSObject, WKNavigationDelegate {
     super.init()
 
     view.navigationDelegate = self
-    window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
+    // Finder's desktop window is above `.desktopWindow` on recent macOS versions.
+    // Use the desktop-icon level so the live scene stays above the still wallpaper.
+    window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)))
     window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
     window.ignoresMouseEvents = true
     window.isOpaque = true

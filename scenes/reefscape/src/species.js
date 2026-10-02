@@ -150,55 +150,101 @@ export const REGAL_TANG = {
 
 export const MOORISH_IDOL = {
   key: "moorish-idol",
-  dorsal: white,
-  dorsalLow: white,
-  flank: [0.88, 0.88, 0.84],
-  belly: [0.9, 0.9, 0.86],
-  bellyLow: [0.9, 0.9, 0.86],
-  sheen: [0.9, 0.9, 0.88],
-  sheenStrength: 0.15,
-  peduncle: white,
+  dorsal: [0.94, 0.94, 0.92],
+  dorsalLow: [0.94, 0.94, 0.92],
+  flank: [0.93, 0.93, 0.9],
+  belly: [0.94, 0.94, 0.92],
+  bellyLow: [0.94, 0.94, 0.92],
+  sheen: [0.9, 0.9, 0.9],
+  sheenStrength: 0.08,
+  peduncle: [0.94, 0.94, 0.92],
   peduncleStrength: 0,
-  sheath: white,
+  sheath: [0.94, 0.94, 0.92],
   gill: [0.6, 0.55, 0.5],
-  cheekDark: [0.8, 0.8, 0.76],
-  cheekLight: [0.88, 0.88, 0.84],
-  skull: [0.86, 0.86, 0.82],
-  snout: [0.5, 0.36, 0.06],
-  orbit: [0.2, 0.18, 0.15],
-  // Two broad black bands, both leaning back as they descend: the first from the
-  // dorsal origin down through the pectoral base to the pelvics, the second over the
-  // rear of the body to the anal fin. Between them the white carries a yellow wash
-  // over the upper flank; the peduncle is white and the tail black. The snout carries
-  // an orange saddle, and a short dark bar drops from the forehead to the eye.
+  cheekDark: [0.86, 0.86, 0.84],
+  cheekLight: [0.93, 0.93, 0.9],
+  skull: [0.92, 0.92, 0.9],
+  snout: [0.86, 0.86, 0.84],
+  orbit: [0.5, 0.36, 0.14],
+  // Black, white and yellow in three black bars and two pale yellow ones. The first bar
+  // takes the eye and broadens as it descends, running forward under the throat to the
+  // chest and covering the pelvic fins; in front of it a narrow white stripe runs from
+  // the forehead down and back to the chest; in front of that the face is black to the
+  // snout, which carries a black-edged orange saddle across its top, a grey flank and a
+  // black chin, and is white at the tip with black lips. The white behind the first bar
+  // runs to lemon yellow over its rear half. The second bar leans back over the rear of
+  // the body and carries into the dorsal and the anal fin; behind it a white stripe and
+  // then the yellow peduncle separate it from the black tail. An orange spot sits at the
+  // base of each pectoral.
   pattern: /* glsl */ `
   {
-    float lean = 0.05 * fishBand;
-    float front = smoothstep(-0.005, 0.03, fishX + lean) * (1.0 - smoothstep(0.12, 0.15, fishX + lean * 0.4));
-    float back = smoothstep(-0.29, -0.26, fishX - lean * 0.5) * (1.0 - smoothstep(-0.16, -0.125, fishX + lean));
-    float wash = smoothstep(-0.17, -0.09, fishX) * (1.0 - smoothstep(-0.03, 0.03, fishX))
-      * (1.0 - smoothstep(0.25, 0.6, fishBand));
-    skin = mix(skin, vec3(0.94, 0.72, 0.08), wash * 0.9);
-    skin = mix(skin, vec3(0.012, 0.011, 0.012), max(front, back));
-    float snoutY = smoothstep(0.1, 0.3, fishBand) * (1.0 - smoothstep(0.62, 0.8, fishBand));
-    skin = mix(skin, vec3(0.94, 0.55, 0.05), smoothstep(0.255, 0.29, fishX) * snoutY);
-    float brow = exp(-pow((fishX - 0.205) / 0.012, 2.0)) * (1.0 - smoothstep(0.2, 0.32, fishBand));
-    skin = mix(skin, vec3(0.05, 0.04, 0.04), brow * 0.8);
+    const vec3 ink = vec3(0.012, 0.011, 0.012);
+    const vec3 gold = vec3(0.98, 0.82, 0.06);
+    float front1 = 0.17 - 0.02 * smoothstep(0.0, 0.5, fishBand) - 0.02 * smoothstep(0.5, 0.85, fishBand);
+    front1 = mix(front1, 0.27, smoothstep(0.86, 0.94, fishBand));
+    float rear1 = -0.03 - 0.03 * smoothstep(0.0, 0.5, fishBand) - 0.04 * smoothstep(0.5, 1.0, fishBand);
+    float bar1 = (1.0 - smoothstep(front1 - 0.005, front1 + 0.005, fishX)) * smoothstep(rear1 - 0.006, rear1 + 0.006, fishX);
+    float front2 = -0.15 - 0.05 * fishBand;
+    float rear2 = -0.21 - 0.06 * fishBand;
+    float bar2 = (1.0 - smoothstep(front2 - 0.006, front2 + 0.006, fishX)) * smoothstep(rear2 - 0.006, rear2 + 0.006, fishX);
+    // The yellow is a wedge: broad high on the flank, where it begins just behind the
+    // first bar, and narrowing toward the belly, where the white runs on much further.
+    float yellowFront = -0.06 - 0.03 * smoothstep(0.0, 0.5, fishBand) - 0.05 * smoothstep(0.5, 1.0, fishBand);
+    float yellow = 1.0 - smoothstep(yellowFront - 0.03, yellowFront + 0.01, fishX);
+    float peduncle = 1.0 - smoothstep(rear2 - 0.03, rear2 - 0.02, fishX);
+    skin = mix(skin, gold, max(yellow, peduncle));
+    // Everything forward of the white stripe is black, bar the saddle, the grey flank
+    // of the tube beneath it, and the white tip.
+    float stripeFront = front1 + 0.045;
+    float face = smoothstep(stripeFront - 0.005, stripeFront + 0.005, fishX) * (1.0 - smoothstep(0.86, 0.94, fishBand));
+    skin = mix(skin, ink, face);
+    float tube = smoothstep(0.228, 0.24, fishX);
+    float tip = smoothstep(0.302, 0.314, fishX);
+    float saddleY = 1.0 - smoothstep(0.4, 0.46, fishBand);
+    float flankY = smoothstep(0.46, 0.52, fishBand) * (1.0 - smoothstep(0.6, 0.66, fishBand));
+    skin = mix(skin, vec3(0.7, 0.7, 0.68), tube * flankY);
+    skin = mix(skin, vec3(0.95, 0.5, 0.04), tube * (1.0 - tip) * saddleY * smoothstep(0.24, 0.25, fishX) * (1.0 - smoothstep(0.292, 0.302, fishX)));
+    skin = mix(skin, vec3(0.94, 0.94, 0.92), tip * (1.0 - smoothstep(0.6, 0.66, fishBand)));
+    skin = mix(skin, ink, max(bar1, bar2));
+    skin = mix(skin, ink, smoothstep(0.336, 0.342, fishX));
+    float spot = exp(-pow((fishX - 0.028) / 0.02, 2.0) - pow((fishY - 0.055) / 0.022, 2.0));
+    skin = mix(skin, vec3(0.95, 0.5, 0.04), spot * 0.9);
   }`,
-  membrane: [0.012, 0.011, 0.012],
+  membrane: [0.7, 0.72, 0.7],
   finPigment: [0.012, 0.011, 0.012],
   finReach: 1.3,
-  finPaleTip: [0.012, 0.011, 0.012],
-  // The dorsal sail and its filament are white with a yellow wash at the base; the
-  // other fins are black with a fine white margin.
+  finPaleTip: [0.94, 0.94, 0.92],
+  filament: [0.94, 0.95, 0.93],
+  // The sail is white along its leading spines, then yellow in a band parallel to
+  // them, then black where the second bar runs up through it to the margin, and white
+  // again at its rear edge. The anal fin is yellow at its front and black behind,
+  // white-edged. The tail is black with a white margin, the pelvics black with a white
+  // leading edge, and the pectorals clear.
   finPattern: /* glsl */ `
-    float sail = step(1.5, vFishPart) * (1.0 - step(2.5, vFishPart));
-    diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.9, 0.7, 0.1), vec3(0.88, 0.88, 0.84), smoothstep(0.05, 0.4, span)), sail);
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.87, 0.85), (1.0 - sail) * smoothstep(0.86, 0.94, span));
-  `,
+  {
+    const vec3 ink = vec3(0.012, 0.011, 0.012);
+    const vec3 chalk = vec3(0.94, 0.94, 0.92);
+    const vec3 gold = vec3(0.98, 0.82, 0.06);
+    float dorsalFin = step(1.5, vFishPart) * (1.0 - step(2.5, vFishPart));
+    float analFin = step(2.5, vFishPart) * (1.0 - step(3.5, vFishPart));
+    float pelvicFin = step(5.5, vFishPart) * (1.0 - step(6.5, vFishPart));
+    vec3 c = chalk;
+    c = mix(c, gold, smoothstep(0.14, 0.2, along) * (1.0 - smoothstep(0.46, 0.52, along)));
+    c = mix(c, ink, smoothstep(0.5, 0.55, along) * (1.0 - smoothstep(0.78, 0.84, along)));
+    vec3 a = mix(gold, ink, smoothstep(0.12, 0.2, along));
+    a = mix(a, chalk, smoothstep(0.9, 0.97, span) * 0.8);
+    vec3 t = mix(ink, chalk, smoothstep(0.84, 0.92, span));
+    vec3 v = mix(ink, chalk, 1.0 - smoothstep(0.04, 0.12, along));
+    diffuseColor.rgb = mix(diffuseColor.rgb, c, dorsalFin);
+    diffuseColor.rgb = mix(diffuseColor.rgb, a, analFin);
+    diffuseColor.rgb = mix(diffuseColor.rgb, t, caudal);
+    diffuseColor.rgb = mix(diffuseColor.rgb, v, pelvicFin);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.33, 0.32), pectoral);
+  }`,
   finAbsorption: [5, 5, 5],
-  iris: [0.3, 0.25, 0.15],
-  irisDark: [0.08, 0.07, 0.05],
+  finDensity: 0.7,
+  iris: [0.55, 0.4, 0.18],
+  irisDark: [0.12, 0.09, 0.05],
 };
 
 export const PORCUPINE_PUFFER = {
@@ -289,6 +335,136 @@ export const ROYAL_GRAMMA = {
   irisDark: [0.15, 0.1, 0.03],
 };
 
+export const FOUR_STRIPE_DAMSEL = {
+  key: "four-stripe-damsel",
+  dorsal: [0.7, 0.72, 0.7],
+  dorsalLow: [0.8, 0.81, 0.79],
+  flank: [0.86, 0.87, 0.85],
+  belly: [0.88, 0.89, 0.87],
+  bellyLow: [0.88, 0.89, 0.87],
+  sheen: [0.9, 0.92, 0.92],
+  sheenStrength: 0.3,
+  peduncle: [0.86, 0.87, 0.85],
+  peduncleStrength: 0,
+  sheath: [0.86, 0.87, 0.85],
+  gill: [0.6, 0.58, 0.55],
+  cheekDark: [0.78, 0.79, 0.77],
+  cheekLight: [0.86, 0.87, 0.85],
+  skull: [0.8, 0.81, 0.79],
+  snout: [0.6, 0.58, 0.56],
+  orbit: [0.1, 0.09, 0.09],
+  // Three black bars on white, each leaning back as it rises: the first through the eye
+  // from the nape to the throat, the second from the front of the dorsal fin through the
+  // pectoral base to the pelvics, the third from the soft dorsal down into the anal
+  // fin. The peduncle is white, and the tail, the fourth stripe, black.
+  pattern: /* glsl */ `
+  {
+    const vec3 ink = vec3(0.012, 0.011, 0.012);
+    float lower = smoothstep(0.0, 0.5, fishBand), upper = smoothstep(0.5, 1.0, fishBand);
+    float f1 = mix(mix(0.248, 0.323, lower), 0.29, upper), r1 = mix(mix(0.168, 0.243, lower), 0.23, upper);
+    float f2 = mix(mix(0.088, 0.14, lower), 0.16, upper), r2 = mix(mix(0.025, 0.052, lower), 0.088, upper);
+    float f3 = mix(mix(-0.08, -0.055, lower), -0.09, upper), r3 = mix(mix(-0.19, -0.126, lower), -0.17, upper);
+    float bar = (1.0 - smoothstep(f1 - 0.006, f1 + 0.006, fishX)) * smoothstep(r1 - 0.006, r1 + 0.006, fishX);
+    bar = max(bar, (1.0 - smoothstep(f2 - 0.006, f2 + 0.006, fishX)) * smoothstep(r2 - 0.006, r2 + 0.006, fishX));
+    bar = max(bar, (1.0 - smoothstep(f3 - 0.006, f3 + 0.006, fishX)) * smoothstep(r3 - 0.006, r3 + 0.006, fishX));
+    skin = mix(skin, ink, bar);
+  }`,
+  membrane: [0.6, 0.62, 0.6],
+  finPigment: [0.86, 0.87, 0.85],
+  finReach: 1.3,
+  finPaleTip: [0.86, 0.87, 0.85],
+  // The bars run up into the dorsal fin, and the spines between them carry black tips;
+  // the anal fin and the pelvics are black, the tail black beyond a white base, and
+  // every dark fin is edged in pale blue.
+  finPattern: /* glsl */ `
+  {
+    const vec3 ink = vec3(0.012, 0.011, 0.012);
+    const vec3 sky = vec3(0.3, 0.7, 0.95);
+    float dorsalFin = step(1.5, vFishPart) * (1.0 - step(2.5, vFishPart));
+    float analFin = step(2.5, vFishPart) * (1.0 - step(3.5, vFishPart));
+    float pelvicFin = step(5.5, vFishPart) * (1.0 - step(6.5, vFishPart));
+    float d = smoothstep(0.16, 0.2, along) * (1.0 - smoothstep(0.34, 0.38, along))
+      + smoothstep(0.64, 0.68, along) * (1.0 - smoothstep(0.96, 0.99, along))
+      + smoothstep(0.86, 0.95, span) * (1.0 - smoothstep(0.34, 0.4, along));
+    vec3 c = mix(diffuseColor.rgb, ink, clamp(d, 0.0, 1.0));
+    c = mix(c, sky, smoothstep(0.93, 0.98, span) * smoothstep(0.96, 1.0, along));
+    vec3 a = mix(ink, sky, smoothstep(0.9, 0.97, span));
+    vec3 v = mix(ink, sky, 1.0 - smoothstep(0.03, 0.1, along));
+    vec3 t = mix(diffuseColor.rgb, ink, smoothstep(0.16, 0.26, span));
+    t = mix(t, sky, smoothstep(0.5, 1.0, span) * (1.0 - smoothstep(0.06, 0.12, min(along, 1.0 - along))));
+    // A black tail is a dense one.
+    pigment = mix(pigment, 1.0, caudal * smoothstep(0.16, 0.26, span));
+    diffuseColor.rgb = mix(diffuseColor.rgb, c, dorsalFin);
+    diffuseColor.rgb = mix(diffuseColor.rgb, a, analFin);
+    diffuseColor.rgb = mix(diffuseColor.rgb, v, pelvicFin);
+    diffuseColor.rgb = mix(diffuseColor.rgb, t, caudal);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.62, 0.6), pectoral);
+  }`,
+  finAbsorption: [5, 5, 5],
+  finDensity: 0.5,
+  iris: [0.3, 0.22, 0.14],
+  irisDark: [0.08, 0.06, 0.05],
+};
+
+export const LONGNOSE_BUTTERFLY = {
+  key: "longnose-butterfly",
+  dorsal: [0.86, 0.66, 0.04],
+  dorsalLow: [0.9, 0.7, 0.05],
+  flank: [0.93, 0.75, 0.07],
+  belly: [0.94, 0.78, 0.1],
+  bellyLow: [0.94, 0.8, 0.14],
+  sheen: [0.95, 0.8, 0.1],
+  sheenStrength: 0.15,
+  peduncle: [0.92, 0.74, 0.08],
+  peduncleStrength: 0,
+  sheath: [0.92, 0.74, 0.08],
+  gill: [0.6, 0.55, 0.5],
+  cheekDark: [0.7, 0.72, 0.75],
+  cheekLight: [0.76, 0.77, 0.8],
+  skull: [0.06, 0.05, 0.05],
+  snout: [0.06, 0.05, 0.05],
+  orbit: [0.12, 0.1, 0.1],
+  // Yellow to the nape and the throat, and a head split down its length: the crown, the
+  // eye and the top of the tube are black; the cheek and the lower half of the tube
+  // silver. A black ocellus with a pale ring sits at the rear of the anal fin's base.
+  pattern: /* glsl */ `
+  {
+    const vec3 ink = vec3(0.012, 0.011, 0.012);
+    float headEdge = 0.06 - 0.035 * smoothstep(0.35, 1.0, fishBand);
+    float head = 1.0 - smoothstep(headEdge - 0.008, headEdge + 0.008, -fishX + 2.0 * headEdge);
+    head = smoothstep(headEdge - 0.008, headEdge + 0.008, fishX);
+    float split = 0.02 * smoothstep(0.34, 0.2, fishX);
+    float upper = smoothstep(split - 0.005, split + 0.005, fishY);
+    skin = mix(skin, vec3(0.74, 0.75, 0.78), head * (1.0 - upper));
+    skin = mix(skin, vec3(0.05, 0.045, 0.045), head * upper);
+    float d = length(vec2((fishX + 0.262) / 0.02, (fishY + 0.05) / 0.018));
+    skin = mix(skin, vec3(0.9, 0.9, 0.85), smoothstep(0.85, 1.0, d) * (1.0 - smoothstep(1.2, 1.45, d)));
+    skin = mix(skin, ink, 1.0 - smoothstep(0.8, 1.0, d));
+  }`,
+  membrane: [0.6, 0.62, 0.62],
+  finPigment: [0.93, 0.75, 0.07],
+  finReach: 1.3,
+  finPaleTip: [0.93, 0.75, 0.07],
+  // Yellow dorsal, anal and pelvics, the soft dorsal and anal edged in pale blue, the
+  // black of the nape running into the first dorsal spines; the tail and the pectorals
+  // are glass.
+  finPattern: /* glsl */ `
+  {
+    const vec3 ink = vec3(0.012, 0.011, 0.012);
+    float dorsalFin = step(1.5, vFishPart) * (1.0 - step(2.5, vFishPart));
+    float analFin = step(2.5, vFishPart) * (1.0 - step(3.5, vFishPart));
+    float soft = (dorsalFin + analFin) * smoothstep(0.55, 0.75, along);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.7, 0.8, 0.9), soft * smoothstep(0.92, 0.98, span));
+    diffuseColor.rgb = mix(diffuseColor.rgb, ink, dorsalFin * (1.0 - smoothstep(0.02, 0.06, along)));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.62, 0.62), max(caudal, pectoral));
+    pigment *= 1.0 - max(caudal, pectoral);
+  }`,
+  finAbsorption: [5, 5, 5],
+  finDensity: 0.75,
+  iris: [0.3, 0.2, 0.12],
+  irisDark: [0.08, 0.05, 0.04],
+};
+
 // The roster, in the order the shoal is numbered. `count` is how many, `plan` the
 // anatomy, `scale` the size range as a multiple of a 40 mm fish.
 export const SPECIES = [
@@ -299,6 +475,8 @@ export const SPECIES = [
   { key: "porcupine-puffer", name: "Porcupine pufferfish", count: 1, scale: [1.6, 1.6], palette: PORCUPINE_PUFFER },
   { key: "royal-gramma", name: "Royal gramma", count: 1, scale: [0.9, 0.9], palette: ROYAL_GRAMMA },
   { key: "yellow-tang", name: "Yellow tang", count: 1, scale: [1.55, 1.55], palette: YELLOW_TANG },
+  { key: "four-stripe-damsel", name: "Four-stripe damselfish", count: 3, scale: [0.95, 1.1], palette: FOUR_STRIPE_DAMSEL },
+  { key: "longnose-butterfly", name: "Yellow longnose butterflyfish", count: 1, scale: [1.6, 1.6], palette: LONGNOSE_BUTTERFLY },
 ].map((species) => ({ ...species, plan: PLANS[species.key] }));
 
 export const COUNT = SPECIES.reduce((total, species) => total + species.count, 0);

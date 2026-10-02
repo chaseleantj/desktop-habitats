@@ -341,6 +341,13 @@ const SWIM_GLSL = /* glsl */ `
         * sin(aSwim.x - (PIVOT - p.x) * 7.5 - 0.65);
     } else if (aPart > 1.5 && aPart < 6.5) {
       p.z += sin(aFinPhase - p.x * 10.0) * aFinProgress * 0.004;
+    } else if (aPart > 11.5 && aPart < 12.5) {
+      // A filament is towed: it lags the body wave more the further from its root, and
+      // a slow ripple of its own runs out along it.
+      float reach = aFinProgress * aFinProgress;
+      p.z += reach * (aSwim.y * 0.09 * sin(aSwim.x - (PIVOT - p.x) * 7.5 - 1.1)
+        + 0.012 * sin(aFinPhase * 0.35 - aFinProgress * 9.0));
+      p.y -= reach * 0.02 * (1.0 + 0.5 * sin(aFinPhase * 0.2));
     }
     return p;
   }

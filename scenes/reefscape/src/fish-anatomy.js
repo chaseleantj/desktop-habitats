@@ -10,7 +10,9 @@ import { waterLitShader } from "./water.js";
 // disc with rounded fins, a tang a compressed oval with a pointed snout and a fin
 // running the length of its back, a Moorish idol a disc taller than it is long with a
 // tubular snout and a sail, a porcupinefish a broad rounded barrel with fans for
-// pectorals and no pelvics at all, a gramma a small elongate basslet.
+// pectorals and no pelvics at all, a gramma a small elongate basslet, a humbug damsel a
+// deep round-headed oval, a longnose butterflyfish a box with its jaws drawn out into a
+// tube a third of its length.
 //
 // Every plan shares one frame so the skins can be written once. Forward is +X: the
 // snout is at x = 0.35 and the caudal fin's base, the hypural plate, at x = -0.295 for
@@ -18,9 +20,9 @@ import { waterLitShader } from "./water.js";
 // species differ in size by the `scale` of their entry in species.js. The spine runs
 // along y = 0, z = 0 and the geometry is symmetric in z. Part ids (attribute aPart):
 // 0 body, 1 caudal, 2 dorsal, 3 anal, 4 right pectoral, 5 left pectoral, 6 pelvic,
-// 7 iris, 8 pupil, 9 oral slit, 10 corneal rim, 11 upper lip, 13 spine. aFinProgress
-// runs 0 at a fin's hinge to 1 at its free edge, and 0 at a spine's base to 1 at its
-// point. The swimming deformation in fish.js bends this
+// 7 iris, 8 pupil, 9 oral slit, 10 corneal rim, 11 upper lip, 12 fin filament, 13 spine.
+// aFinProgress runs 0 at a fin's hinge to 1 at its free edge, 0 at a filament's root to 1
+// at its free end, and 0 at a spine's base to 1 at its point. The swimming deformation in fish.js bends this
 // geometry about the vertical axis and supplies vSkinPoint (rest position), vFishUV
 // and vFishPart to the skin shader.
 
@@ -213,24 +215,36 @@ const YELLOW_TANG_PLAN = {
 
 const MOORISH_IDOL_PLAN = {
   key: "moorish-idol",
-  // A disc nearly as deep as it is long, drawn out forward into a tubular snout with
-  // the mouth at its tip below the axis, and a sail of a dorsal whose front rays trail
-  // back past the tail as the filament.
-  top: [[0.35, -0.02], [0.335, -0.005], [0.31, 0.02], [0.28, 0.055], [0.25, 0.1], [0.21, 0.16], [0.16, 0.225], [0.1, 0.275], [0.04, 0.3], [-0.03, 0.298], [-0.1, 0.27], [-0.17, 0.205], [-0.225, 0.13], [-0.265, 0.07], [HYPURAL_X, 0.05]],
-  bottom: [[0.35, -0.036], [0.335, -0.05], [0.31, -0.065], [0.28, -0.088], [0.25, -0.12], [0.21, -0.16], [0.16, -0.2], [0.1, -0.235], [0.04, -0.25], [-0.03, -0.248], [-0.1, -0.228], [-0.17, -0.18], [-0.225, -0.118], [-0.265, -0.068], [HYPURAL_X, -0.048]],
-  width: [[0.35, 0.005], [0.335, 0.009], [0.31, 0.014], [0.28, 0.02], [0.24, 0.027], [0.18, 0.033], [0.1, 0.036], [0.0, 0.034], [-0.1, 0.028], [-0.18, 0.02], [-0.24, 0.012], [HYPURAL_X, 0.007]],
-  fullness: [[0.35, 2.4, 2.4], [0.28, 2.2, 2.3], [0.1, 1.8, 1.9], [-0.1, 1.75, 1.8], [-0.2, 1.6, 1.6], [HYPURAL_X, 1.5, 1.5]],
-  eye: { x: 0.215, y: 0.09, radiusX: 0.028, radiusY: 0.027, bulge: 0.009 },
-  opercle: { x: 0.16, bow: 0.035, y: 0.02, span: 0.17 },
-  mouth: { cornerX: 0.335, cornerY: -0.036, tipX: 0.3495, tipY: -0.028 },
+  // Measured off a side-on photograph. The front half of the fish is one long face: from
+  // the nape, which is the highest point of the body and sits behind mid-length, the
+  // forehead runs down to the snout in a single straight slope, with the small bony
+  // horns standing on it just above the eyes, and the eye sits more than a third of the
+  // way back along the fish. The snout leaves the foot of that slope at a kink, as a
+  // tube with the small mouth at its tip. Behind the nape the back falls away at nearly
+  // forty-five degrees to the peduncle while the belly hangs deepest well behind
+  // mid-body, and the dorsal fin fills the whole space above that sloping back: a sail
+  // whose leading edge leans back from the nape to the peak of the third spine, whose
+  // margin sweeps down from the peak to a near-vertical rear edge at the peduncle, and
+  // whose third spine trails on as a whip longer than the fish. The anal fin's pointed
+  // lobe carries the belly line back to meet that rear edge from below. The pelvics
+  // are long and pointed, the tail truncate and large.
+  top: [[0.35, -0.002], [0.31, 0.006], [0.27, 0.018], [0.245, 0.034], [0.225, 0.056], [0.2, 0.082], [0.17, 0.108], [0.135, 0.135], [0.118, 0.162], [0.105, 0.17], [0.09, 0.168], [0.07, 0.182], [0.03, 0.212], [-0.01, 0.24], [-0.04, 0.252], [-0.08, 0.235], [-0.13, 0.19], [-0.18, 0.145], [-0.22, 0.108], [-0.255, 0.082], [-0.275, 0.068], [HYPURAL_X, 0.06]],
+  bottom: [[0.35, -0.03], [0.31, -0.038], [0.27, -0.044], [0.245, -0.05], [0.225, -0.062], [0.2, -0.086], [0.17, -0.125], [0.13, -0.18], [0.08, -0.235], [0.02, -0.28], [-0.05, -0.305], [-0.1, -0.312], [-0.15, -0.305], [-0.2, -0.26], [-0.235, -0.17], [-0.265, -0.095], [HYPURAL_X, -0.06]],
+  width: [[0.35, 0.005], [0.3, 0.012], [0.25, 0.018], [0.2, 0.024], [0.15, 0.03], [0.1, 0.035], [0.0, 0.036], [-0.1, 0.033], [-0.18, 0.026], [-0.24, 0.016], [HYPURAL_X, 0.008]],
+  fullness: [[0.35, 2.4, 2.4], [0.25, 2.3, 2.3], [0.1, 1.9, 2.0], [-0.1, 1.75, 1.8], [-0.2, 1.6, 1.6], [HYPURAL_X, 1.5, 1.5]],
+  eye: { x: 0.11, y: 0.103, radiusX: 0.026, radiusY: 0.025, bulge: 0.009 },
+  opercle: { x: 0.05, bow: 0.03, y: 0.0, span: 0.15 },
+  mouth: { cornerX: 0.335, cornerY: -0.016, tipX: 0.3495, tipY: -0.012 },
   scales: [80, 30],
-  rays: { 1: 16, 2: 30, 3: 26, 4: 17, 5: 17, 6: 5 },
+  rays: { 1: 16, 2: 32, 3: 26, 4: 17, 5: 17, 6: 5, 12: 24 },
   fins: [
-    { part: 1, base: { hypural: [0.048, -0.046] }, tip: [[-0.30, 0.075], [-0.35, 0.1], [-0.41, 0.125], [-0.43, 0.13], [-0.42, 0.08], [-0.412, 0.03], [-0.41, 0.0], [-0.412, -0.03], [-0.42, -0.08], [-0.43, -0.13], [-0.41, -0.125], [-0.35, -0.1], [-0.30, -0.073]], edge: 0.014, root: 0.015 },
-    { part: 2, base: { median: [0.12, -0.23], dorsal: true, sink: 0.008 }, tip: [[0.125, 0.36], [0.08, 0.45], [0.02, 0.5], [-0.06, 0.5], [-0.16, 0.46], [-0.27, 0.4], [-0.38, 0.33], [-0.47, 0.26]], edge: 0.012, root: 0.01 },
-    { part: 3, base: { median: [-0.03, -0.23], dorsal: false }, tip: [[-0.03, -0.3], [-0.09, -0.34], [-0.16, -0.33], [-0.23, -0.28], [-0.28, -0.2], [-0.3, -0.12]], edge: 0.012 },
-    { part: 4, paired: true, base: { skin: [[0.16, 0.02], [0.155, -0.005], [0.148, -0.03]] }, tip: [[0.12, 0.03, 0.045], [0.085, 0.015, 0.06], [0.05, -0.01, 0.068], [0.045, -0.04, 0.062], [0.07, -0.065, 0.05], [0.11, -0.06, 0.04]], sway: 0.002, roll: 0.004, edge: 0.02, root: 0.005 },
-    { part: 6, paired: true, base: { skin: [[0.15, -0.18], [0.14, -0.19], [0.128, -0.195]] }, tip: [[0.13, -0.24, 0.02], [0.07, -0.31, 0.025], [0.02, -0.3, 0.018], [0.05, -0.23, 0.012]], sway: 0.0012, roll: 0.002, edge: 0.02, root: 0.005 },
+    { part: 1, base: { hypural: [0.06, -0.06] }, tip: [[-0.30, 0.09], [-0.36, 0.125], [-0.42, 0.15], [-0.45, 0.155], [-0.445, 0.1], [-0.44, 0.04], [-0.438, 0.0], [-0.44, -0.04], [-0.445, -0.1], [-0.45, -0.155], [-0.42, -0.15], [-0.36, -0.125], [-0.30, -0.088]], edge: 0.012, root: 0.015 },
+    { part: 2, base: { median: [-0.04, -0.26], dorsal: true, sink: 0.008 }, tip: [[-0.035, 0.27], [-0.065, 0.36], [-0.1, 0.46], [-0.135, 0.56], [-0.165, 0.64], [-0.2, 0.7], [-0.195, 0.66], [-0.185, 0.5], [-0.2, 0.38], [-0.21, 0.27], [-0.22, 0.17], [-0.235, 0.1], [-0.255, 0.075]], edge: 0.012, root: 0.01 },
+    // The whip grows out of the spike the sail narrows to.
+    { part: 12, ribbon: true, base: { points: [[-0.195, 0.7, 0], [-0.26, 0.755, 0], [-0.4, 0.81, 0], [-0.58, 0.83, 0], [-0.78, 0.815, 0], [-0.98, 0.77, 0], [-1.15, 0.705, 0]] }, tip: [[-0.205, 0.688, 0], [-0.26, 0.745, 0], [-0.4, 0.802, 0], [-0.58, 0.824, 0], [-0.78, 0.811, 0], [-0.98, 0.767, 0], [-1.15, 0.703, 0]], edge: 0, root: 0 },
+    { part: 3, base: { median: [-0.15, -0.265], dorsal: false }, tip: [[-0.15, -0.315], [-0.19, -0.332], [-0.225, -0.33], [-0.243, -0.26], [-0.253, -0.17], [-0.262, -0.11], [-0.268, -0.08]], edge: 0.012 },
+    { part: 4, paired: true, base: { skin: [[0.045, 0.095], [0.04, 0.065], [0.032, 0.035]] }, tip: [[0.02, 0.1, 0.03], [-0.01, 0.08, 0.045], [-0.035, 0.05, 0.055], [-0.04, 0.02, 0.05], [-0.02, -0.01, 0.04], [0.01, -0.005, 0.03]], sway: 0.002, roll: 0.004, edge: 0.02, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.13, -0.175], [0.12, -0.19], [0.108, -0.2]] }, tip: [[0.11, -0.26, 0.02], [0.04, -0.37, 0.026], [-0.03, -0.39, 0.02], [0.0, -0.28, 0.012]], sway: 0.0012, roll: 0.002, edge: 0.014, root: 0.005 },
   ],
 };
 
@@ -284,6 +298,57 @@ const ROYAL_GRAMMA_PLAN = {
   ],
 };
 
+const FOUR_STRIPE_DAMSEL_PLAN = {
+  key: "four-stripe-damsel",
+  // A humbug: a deep oval damselfish, the forehead steep and rounded over a small
+  // terminal mouth, the eye large and set mid-head, the dorsal fin one long fin whose
+  // spines stand a little proud of the membrane and whose soft rays end in a rounded
+  // lobe over the peduncle. The tail is shallowly forked with rounded lobes, the pelvics
+  // long and pointed.
+  top: [[0.35, 0.0], [0.343, 0.028], [0.332, 0.058], [0.315, 0.09], [0.295, 0.12], [0.265, 0.15], [0.23, 0.175], [0.18, 0.196], [0.12, 0.208], [0.06, 0.21], [0.0, 0.203], [-0.06, 0.183], [-0.12, 0.15], [-0.18, 0.106], [-0.23, 0.07], [-0.27, 0.05], [HYPURAL_X, 0.045]],
+  bottom: [[0.35, -0.012], [0.343, -0.038], [0.332, -0.065], [0.315, -0.092], [0.295, -0.115], [0.265, -0.137], [0.23, -0.152], [0.18, -0.162], [0.12, -0.168], [0.06, -0.168], [0.0, -0.162], [-0.06, -0.15], [-0.12, -0.126], [-0.18, -0.093], [-0.23, -0.065], [-0.27, -0.048], [HYPURAL_X, -0.043]],
+  width: [[0.35, 0.005], [0.335, 0.016], [0.31, 0.03], [0.28, 0.04], [0.24, 0.048], [0.18, 0.053], [0.1, 0.054], [0.0, 0.05], [-0.1, 0.04], [-0.18, 0.028], [-0.24, 0.016], [HYPURAL_X, 0.008]],
+  fullness: [[0.35, 2.5, 2.6], [0.25, 2.4, 2.5], [0.1, 2.1, 2.3], [-0.1, 1.9, 2.0], [-0.2, 1.6, 1.6], [HYPURAL_X, 1.5, 1.5]],
+  eye: { x: 0.283, y: 0.03, radiusX: 0.038, radiusY: 0.037, bulge: 0.013 },
+  opercle: { x: 0.19, bow: 0.03, y: 0.0, span: 0.12 },
+  mouth: { cornerX: 0.328, cornerY: -0.012, tipX: 0.3495, tipY: 0.0 },
+  scales: [28, 12],
+  rays: { 1: 16, 2: 26, 3: 14, 4: 18, 5: 18, 6: 6 },
+  fins: [
+    { part: 1, base: { hypural: [0.04, -0.038] }, tip: [[-0.30, 0.06], [-0.36, 0.095], [-0.42, 0.11], [-0.445, 0.1], [-0.41, 0.055], [-0.385, 0.015], [-0.38, 0.0], [-0.385, -0.015], [-0.41, -0.055], [-0.445, -0.1], [-0.42, -0.11], [-0.36, -0.095], [-0.30, -0.06]], edge: 0.024, root: 0.015 },
+    { part: 2, base: { median: [0.15, -0.2], dorsal: true }, tip: [[0.15, 0.24], [0.1, 0.3], [0.05, 0.32], [0.0, 0.32], [-0.06, 0.31], [-0.11, 0.3], [-0.16, 0.31], [-0.21, 0.29], [-0.25, 0.2], [-0.27, 0.1]], edge: 0.04 },
+    { part: 3, base: { median: [-0.07, -0.2], dorsal: false }, tip: [[-0.07, -0.2], [-0.11, -0.27], [-0.16, -0.3], [-0.21, -0.28], [-0.25, -0.19], [-0.27, -0.1]], edge: 0.024 },
+    { part: 4, paired: true, base: { skin: [[0.185, -0.005], [0.178, -0.03], [0.168, -0.055]] }, tip: [[0.14, -0.01, 0.06], [0.1, -0.025, 0.085], [0.065, -0.05, 0.095], [0.05, -0.08, 0.085], [0.07, -0.105, 0.07], [0.115, -0.1, 0.055]], sway: 0.002, roll: 0.004, edge: 0.024, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.135, -0.145], [0.122, -0.155], [0.108, -0.158]] }, tip: [[0.115, -0.2, 0.025], [0.06, -0.28, 0.03], [0.0, -0.3, 0.022], [0.03, -0.22, 0.014]], sway: 0.0012, roll: 0.002, edge: 0.02, root: 0.005 },
+  ],
+};
+
+const LONGNOSE_BUTTERFLY_PLAN = {
+  key: "longnose-butterfly",
+  // Forcipiger: a butterflyfish whose jaws are drawn out into a tube nearly a third of
+  // its length, with a minute mouth at the tip and a small eye at its root. Behind the
+  // eye the forehead climbs steeply to the nape, and the body is a deep box: the dorsal
+  // fin's spines stand in a level row along the top, each tip clear of the deeply
+  // incised membrane, and the anal fin makes a matching level edge below. The tail is
+  // small and rounded, the pelvics moderate.
+  top: [[0.35, 0.012], [0.3, 0.018], [0.25, 0.025], [0.2, 0.038], [0.17, 0.06], [0.14, 0.095], [0.11, 0.135], [0.08, 0.17], [0.05, 0.19], [0.0, 0.2], [-0.06, 0.198], [-0.12, 0.182], [-0.18, 0.152], [-0.23, 0.108], [-0.27, 0.066], [HYPURAL_X, 0.045]],
+  bottom: [[0.35, -0.016], [0.3, -0.02], [0.25, -0.024], [0.2, -0.032], [0.17, -0.045], [0.14, -0.065], [0.1, -0.095], [0.05, -0.125], [0.0, -0.15], [-0.06, -0.164], [-0.12, -0.166], [-0.18, -0.146], [-0.23, -0.102], [-0.27, -0.063], [HYPURAL_X, -0.045]],
+  width: [[0.35, 0.005], [0.3, 0.008], [0.25, 0.01], [0.2, 0.013], [0.16, 0.02], [0.12, 0.028], [0.06, 0.033], [0.0, 0.034], [-0.1, 0.03], [-0.18, 0.022], [-0.24, 0.013], [HYPURAL_X, 0.007]],
+  fullness: [[0.35, 2.4, 2.4], [0.2, 2.3, 2.3], [0.1, 2.0, 2.1], [-0.1, 1.8, 1.9], [-0.2, 1.6, 1.6], [HYPURAL_X, 1.5, 1.5]],
+  eye: { x: 0.165, y: 0.045, radiusX: 0.021, radiusY: 0.02, bulge: 0.008 },
+  opercle: { x: 0.075, bow: 0.025, y: 0.0, span: 0.12 },
+  mouth: { cornerX: 0.34, cornerY: -0.003, tipX: 0.3495, tipY: 0.0 },
+  scales: [45, 18],
+  rays: { 1: 15, 2: 34, 3: 26, 4: 15, 5: 15, 6: 5 },
+  fins: [
+    { part: 1, base: { hypural: [0.04, -0.04] }, tip: [[-0.30, 0.06], [-0.36, 0.085], [-0.42, 0.09], [-0.445, 0.06], [-0.45, 0.0], [-0.445, -0.06], [-0.42, -0.09], [-0.36, -0.085], [-0.30, -0.06]], edge: 0.02, root: 0.015 },
+    { part: 2, base: { median: [0.055, -0.26], dorsal: true }, tip: [[0.05, 0.22], [0.0, 0.245], [-0.06, 0.25], [-0.12, 0.25], [-0.18, 0.25], [-0.24, 0.245], [-0.27, 0.23], [-0.285, 0.18], [-0.292, 0.1]], edge: 0.05 },
+    { part: 3, base: { median: [-0.03, -0.26], dorsal: false }, tip: [[-0.03, -0.17], [-0.08, -0.22], [-0.14, -0.24], [-0.2, -0.24], [-0.24, -0.235], [-0.27, -0.22], [-0.285, -0.17], [-0.292, -0.09]], edge: 0.02 },
+    { part: 4, paired: true, base: { skin: [[0.075, 0.02], [0.07, -0.005], [0.062, -0.03]] }, tip: [[0.045, 0.03, 0.04], [0.01, 0.015, 0.055], [-0.02, -0.01, 0.062], [-0.025, -0.04, 0.056], [0.0, -0.06, 0.045], [0.035, -0.055, 0.035]], sway: 0.002, roll: 0.004, edge: 0.02, root: 0.005 },
+    { part: 6, paired: true, base: { skin: [[0.12, -0.08], [0.11, -0.09], [0.098, -0.095]] }, tip: [[0.1, -0.13, 0.02], [0.05, -0.2, 0.024], [0.0, -0.2, 0.018], [0.03, -0.14, 0.012]], sway: 0.0012, roll: 0.002, edge: 0.02, root: 0.005 },
+  ],
+};
+
 export const PLANS = {
   chromis: CHROMIS_PLAN,
   ocellaris: CLOWNFISH_PLAN,
@@ -292,6 +357,8 @@ export const PLANS = {
   "moorish-idol": MOORISH_IDOL_PLAN,
   "porcupine-puffer": PORCUPINE_PUFFER_PLAN,
   "royal-gramma": ROYAL_GRAMMA_PLAN,
+  "four-stripe-damsel": FOUR_STRIPE_DAMSEL_PLAN,
+  "longnose-butterfly": LONGNOSE_BUTTERFLY_PLAN,
 };
 
 // ---------------------------------------------------------------------------------
@@ -674,7 +741,7 @@ function curveThrough(points) {
 // real fin its finely scalloped edge. The whole fin is one double-sided sheet; the rays
 // are drawn by the skin shader.
 function finFan(
-  { part, rays, base, tip, sway = 0, roll = 0, edge = 0.055, root = 0.006 },
+  { part, rays, base, tip, sway = 0, roll = 0, edge = 0.055, root = 0.006, ribbon = false },
   membranes,
 ) {
   const columns = (rays - 1) * RAY_SUBDIVISIONS;
@@ -715,7 +782,9 @@ function finFan(
       point.z += roll * bow * Math.sin((along - 0.5) * Math.PI);
       positions.push(point.x, point.y, point.z);
       uvs.push(along, t);
-      progress.push(t);
+      // A ribbon's progress runs along it, root to tip, so the swimming code can let its
+      // free end trail; a fan's runs across it, hinge to margin.
+      progress.push(ribbon ? along : t);
       if (column < columns && step < MEMBRANE_STEPS) {
         const i = column * (MEMBRANE_STEPS + 1) + step;
         indices.push(
@@ -739,6 +808,7 @@ function finFan(
 // midline; the caudal fin along the hypural margin; a paired fin sits in the skin of
 // one flank, mirrored for the other.
 function insertionLine(body, base, side) {
+  if (base.points) return base.points;
   if (base.median) {
     const [from, to] = base.median;
     const sink = base.sink ?? 0.006;
@@ -1169,8 +1239,11 @@ export function applySkin(shader, palette = CHROMIS, plan = CHROMIS_PLAN) {
         gFishThrough = fishThrough(${glsl(MEMBRANE_THICKNESS)},
           FISH_FIN_PIGMENT * pigment + ${glsl(FIN_RAY_DENSITY)} * ribs);
         #ifdef FISH_MEMBRANE
-          // Thickness falls away toward the free margin; pigment and rays add body.
+          // Thickness falls away toward the free margin; pigment and rays add body. A
+          // species whose fins are scaled and fleshy keeps its pigmented fins thick to
+          // the margin, its clear ones as thin as anyone's.
           float thickness = mix(1.0, mix(0.34, 0.50, caudal), smoothstep(0.06, 1.0, span));
+          thickness = mix(thickness, 1.0, ${glsl(p.finDensity ?? 0)} * pigment);
           diffuseColor.a = clamp(diffuseColor.a * mix(0.86, 1.0, caudal) * thickness
             * (1.0 + pigment * 1.2 + ribs * 0.85), 0.0, 1.0);
         #endif
@@ -1188,6 +1261,14 @@ export function applySkin(shader, palette = CHROMIS, plan = CHROMIS_PLAN) {
         diffuseColor.rgb = vec3(0.175, 0.168, 0.132);
       } else if (vFishPart < 11.5) {
         diffuseColor.rgb = vec3(0.330, 0.310, 0.265);
+      } else if (vFishPart < 12.5) {
+        // A fin filament: the whip a dorsal spine trails, bone in a sleeve of skin, pale
+        // and nearly opaque, fading a little toward its free end.
+        diffuseColor.rgb = ${c3(p.filament ?? [0.86, 0.87, 0.85])};
+        gFishThrough = fishThrough(${glsl(MEMBRANE_THICKNESS * 1.5)}, vec3(1.5));
+        #ifdef FISH_MEMBRANE
+          diffuseColor.a = mix(1.0, 0.8, smoothstep(0.6, 1.0, vFishProgress));
+        #endif
       } else {
         // A spine: pale bone under a film of skin, darker toward the root.
         diffuseColor.rgb = mix(vec3(0.42, 0.36, 0.22), vec3(0.78, 0.74, 0.58), vFishProgress);
